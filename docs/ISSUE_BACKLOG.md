@@ -2,7 +2,7 @@
 
 更新日期：`2026-09-20`。协作方式已确认：拆分任务，由三名成员自行认领，不固定个人的技术岗位。
 
-本清单包含 **21 个本地 Issue 草稿**，目前均未认领、未完成，也未发布到远端。`MF-01` 等是本地稳定 ID，不代表托管平台已有同号 Issue。正文可直接作为发布草稿，通用字段见 [Issue 模板](../CONTRIBUTING.md#issue-模板)。
+本清单的 **21 个任务已全部发布到 [GitHub Issues](https://github.com/A-Words/museflow/issues)**。`MF-01` 等是本地稳定 ID，实际 GitHub 编号以下方链接为准；创建时均未认领、不设截止日期。后续负责人、状态及验收证据以对应 Issue 为准，本地只维护范围和依赖。新任务使用 [Issue 模板](../CONTRIBUTING.md#issue-模板)。
 
 范围沿用 [PRD](PRD.md)：P0 完成歌词、音乐、TTS 与四类核心模块，P1 补齐翻唱和克隆；无固定日期，不增加分享、真实支付等课题外功能。AI SDK、数据库等未确认选型仍需在相关 Issue 中评审，不能因任务清单出现实现步骤就视为已经确定。
 
@@ -28,42 +28,42 @@
 3. 认领记录状态流转：`可认领 → 进行中 → 待评审 → 已完成`；遇到障碍记为 `阻塞`，写清原因、依赖和已有成果。解除阻塞后恢复原工作阶段。
 4. “代码已写”或“有演示截图”不能直接关闭任务；需满足本项验收、通过另一成员评审、合并相关变更，并附实际证据。设计类任务以文档/原型评审为证据，不虚构运行测试。
 5. 表中的“验收条件”是在[测试计划](TEST_PLAN.md)基础上的任务化检查；实施时补实际测试。Mock 能证明契约和流程，真实生成工具的完成条件必须包含真实请求验证。
-6. 本地阶段在下表记录认领者和状态。发布远端后填写真实 Issue 链接，以远端 assignee、状态为准；本地保留范围和依赖索引，避免两处状态冲突。
+6. 在 GitHub Issue 记录认领者和状态；本地保留范围、依赖和实际链接，避免两处状态冲突。需求或依赖变更时，同步更新 Issue 和相关设计文档。
 7. 任务过大时按 [模板](../CONTRIBUTING.md#issue-模板)拆成可独立验收的子 Issue，保留父子关系。公共迁移、锁文件和配置文件的变更在 PR 中明确，避免同时改动后覆盖他人结果。
 
-## 初始认领表
+## Issue 索引
 
-前置依赖采用本地 ID。所有“可认领”状态仅表示任务准备就绪，不代表有人已开始。
+前置依赖采用本地 ID，GitHub Issue 正文中已链接到实际前置任务。MF-01、MF-02、MF-03 没有前置依赖；其他任务按依赖完成情况推进。当前负责人及进度请打开对应 Issue 查看。
 
-| ID | 阶段 | 标题 | 前置依赖 | 初始状态 | 认领者 | 远端 Issue |
-| --- | --- | --- | --- | --- | --- | --- |
-| MF-01 | P0 准备 | 剩余技术选择与公共 API 约定 | 无 | 可认领 | 未认领 | 未发布 |
-| MF-02 | P0 准备 | 核心页面与交互原型 | 无 | 可认领 | 未认领 | 未发布 |
-| MF-03 | P0 准备 | 文本音乐语音 Provider 契约与切换样例 | 无 | 可认领 | 未认领 | 未发布 |
-| MF-04 | P0 | Nuxt 与 Worker 项目骨架 | MF-01 | 待依赖 | 未认领 | 未发布 |
-| MF-05 | P0 | 数据库基线与迁移约定 | MF-03、MF-04 | 待依赖 | 未认领 | 未发布 |
-| MF-06 | P0 | 注册登录与资源权限 | MF-02、MF-05 | 待依赖 | 未认领 | 未发布 |
-| MF-07 | P0 | 双积分报价账本与积分页面 | MF-02、MF-03、MF-05、MF-06 | 待依赖 | 未认领 | 未发布 |
-| MF-08 | P0 | 异步任务与 Worker 恢复 | MF-03、MF-05、MF-07、MF-10 | 待依赖 | 未认领 | 未发布 |
-| MF-09 | P0 | 对话 Agent 与创作工作区 | MF-02、MF-06、MF-07、MF-08、MF-11 | 待依赖 | 未认领 | 未发布 |
-| MF-10 | P0 | 生成物归档与作品库 | MF-02、MF-05、MF-06 | 待依赖 | 未认领 | 未发布 |
-| MF-11 | P0 | 文本适配器与歌词生成 | MF-03、MF-04 | 待依赖 | 未认领 | 未发布 |
-| MF-12 | P0 | 音乐生成适配器 | MF-03、MF-04 | 待依赖 | 未认领 | 未发布 |
-| MF-13 | P0 | TTS 适配器 | MF-03、MF-04 | 待依赖 | 未认领 | 未发布 |
-| MF-14 | P0 | 创作行为与推荐闭环 | MF-02、MF-08、MF-10 | 待依赖 | 未认领 | 未发布 |
-| MF-15 | P0 | 管理后台与供应商配置切换 | MF-02、MF-03、MF-06、MF-07、MF-08 | 待依赖 | 未认领 | 未发布 |
-| MF-16 | P0 验收 | P0 真实流程联调与验收 | MF-09、MF-10、MF-12、MF-13、MF-14、MF-15 | 待依赖 | 未认领 | 未发布 |
-| MF-17 | P1 | 声音授权与档案管理 | MF-16 | 待依赖 | 未认领 | 未发布 |
-| MF-18 | P1 | 声音克隆工具接入 | MF-17 | 待依赖 | 未认领 | 未发布 |
-| MF-19 | P1 | 翻唱工具接入 | MF-17 | 待依赖 | 未认领 | 未发布 |
-| MF-20 | P1 验收 | 翻唱克隆与授权撤销联调 | MF-18、MF-19 | 待依赖 | 未认领 | 未发布 |
-| MF-21 | 交付 | 课程文档视频与源码材料汇总 | MF-16、MF-20 | 待依赖 | 未认领 | 未发布 |
+| ID | 阶段 | 标题 | 前置依赖 | GitHub Issue |
+| --- | --- | --- | --- | --- |
+| MF-01 | P0 准备 | 剩余技术选择与公共 API 约定 | 无 | [#1](https://github.com/A-Words/museflow/issues/1) |
+| MF-02 | P0 准备 | 核心页面与交互原型 | 无 | [#2](https://github.com/A-Words/museflow/issues/2) |
+| MF-03 | P0 准备 | 文本音乐语音 Provider 契约与切换样例 | 无 | [#3](https://github.com/A-Words/museflow/issues/3) |
+| MF-04 | P0 | Nuxt 与 Worker 项目骨架 | MF-01 | [#4](https://github.com/A-Words/museflow/issues/4) |
+| MF-05 | P0 | 数据库基线与迁移约定 | MF-03、MF-04 | [#5](https://github.com/A-Words/museflow/issues/5) |
+| MF-06 | P0 | 注册登录与资源权限 | MF-02、MF-05 | [#6](https://github.com/A-Words/museflow/issues/6) |
+| MF-07 | P0 | 双积分报价账本与积分页面 | MF-02、MF-03、MF-05、MF-06 | [#7](https://github.com/A-Words/museflow/issues/7) |
+| MF-08 | P0 | 异步任务与 Worker 恢复 | MF-03、MF-05、MF-07、MF-10 | [#9](https://github.com/A-Words/museflow/issues/9) |
+| MF-09 | P0 | 对话 Agent 与创作工作区 | MF-02、MF-06、MF-07、MF-08、MF-11 | [#11](https://github.com/A-Words/museflow/issues/11) |
+| MF-10 | P0 | 生成物归档与作品库 | MF-02、MF-05、MF-06 | [#8](https://github.com/A-Words/museflow/issues/8) |
+| MF-11 | P0 | 文本适配器与歌词生成 | MF-03、MF-04 | [#10](https://github.com/A-Words/museflow/issues/10) |
+| MF-12 | P0 | 音乐生成适配器 | MF-03、MF-04 | [#12](https://github.com/A-Words/museflow/issues/12) |
+| MF-13 | P0 | TTS 适配器 | MF-03、MF-04 | [#13](https://github.com/A-Words/museflow/issues/13) |
+| MF-14 | P0 | 创作行为与推荐闭环 | MF-02、MF-08、MF-10 | [#14](https://github.com/A-Words/museflow/issues/14) |
+| MF-15 | P0 | 管理后台与供应商配置切换 | MF-02、MF-03、MF-06、MF-07、MF-08 | [#15](https://github.com/A-Words/museflow/issues/15) |
+| MF-16 | P0 验收 | P0 真实流程联调与验收 | MF-09、MF-10、MF-12、MF-13、MF-14、MF-15 | [#16](https://github.com/A-Words/museflow/issues/16) |
+| MF-17 | P1 | 声音授权与档案管理 | MF-16 | [#17](https://github.com/A-Words/museflow/issues/17) |
+| MF-18 | P1 | 声音克隆工具接入 | MF-17 | [#18](https://github.com/A-Words/museflow/issues/18) |
+| MF-19 | P1 | 翻唱工具接入 | MF-17 | [#19](https://github.com/A-Words/museflow/issues/19) |
+| MF-20 | P1 验收 | 翻唱克隆与授权撤销联调 | MF-18、MF-19 | [#20](https://github.com/A-Words/museflow/issues/20) |
+| MF-21 | 交付 | 课程文档视频与源码材料汇总 | MF-16、MF-20 | [#21](https://github.com/A-Words/museflow/issues/21) |
 
-MF-01、MF-02、MF-03 可由三人同时认领。骨架建立后，数据库与三类真实 Provider 适配器可并行推进；进入功能阶段后按契约交接和实际就绪情况认领。Provider 接入需要可用账号和调用额度，但现在不要求预先锁定供应商。
+MF-01、MF-02、MF-03 可由三人并行推进，认领前先确认 Issue 的当前 assignee。骨架建立后，数据库与三类真实 Provider 适配器可并行推进；进入功能阶段后按契约交接和实际就绪情况认领。Provider 接入需要可用账号和调用额度，但现在不要求预先锁定供应商。
 
 ## Issue 正文
 
-每项的阶段、依赖和认领状态以上表为准；发布时将这些字段与下列正文一并复制。每项默认还需附关联 PR、评审人、实际验证结果和相关文档变更。
+下列内容保留各任务的初始范围和验收基线；阶段与依赖见上表，执行进度及证据在对应 GitHub Issue 中维护。每项需附关联 PR、评审人、实际验证结果和相关文档变更。
 
 ### MF-01 剩余技术选择与公共 API 约定
 
