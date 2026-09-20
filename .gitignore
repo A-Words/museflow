@@ -1,0 +1,39 @@
+# Dependencies and generated output
+node_modules/
+.nuxt/
+.output/
+.data/
+dist/
+coverage/
+.cache/
+.pnpm-store/
+*.tsbuildinfo
+
+# Local configuration; keep safe examples tracked
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Private runtime data; keep test fixtures outside these directories
+/data/
+/storage/
+/tmp/
+/apps/web/data/
+/apps/web/storage/
+/apps/worker/data/
+/apps/worker/storage/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+
+# Machine-specific files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
