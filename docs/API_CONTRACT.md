@@ -1,30 +1,36 @@
 # 接口契约草案
 
-版本：`v0.2`，更新于 `2026-09-20`。状态：设计提案，接口尚未实现。应用框架已确认为 Nuxt + TypeScript，文本/音乐/TTS 采用可切换供应商的接口设计；API 拟由 Nuxt 的 Nitro 服务端承载。用于三人并行设计和后续联调；实现时将本契约转换为共享运行时 schema 与 OpenAPI，而不是维护两套独立的字段定义。
+版本：`v0.2`，更新于 `2026-09-20`。状态：设计提案，接口尚未实现。应用框架已确认为 Nuxt + TypeScript，文本/音乐/TTS 采用可切换供应商的接口设计；API 已确认由 Nuxt 的 Nitro 服务端承载。用于三人并行设计和后续联调；实现时将本契约转换为共享运行时 schema 与 OpenAPI，而不是维护两套独立的字段定义。
 
 ## 公共约定
 
-- API 前缀 `/api/v1`，JSON 使用 camelCase；ID 不透明，时间为 UTC ISO 8601，积分值为十进制字符串。
-- 认证候选为服务端会话 + `HttpOnly` Cookie；远程 HTTPS 使用 `Secure`，同站部署设置合适的 `SameSite`。写接口执行 Origin/CSRF 校验，不能仅依赖 Cookie 属性。
+以下 ID、时间、积分表示、分页、错误及幂等规则已于 2026-09-20 确认；对话采用 AI SDK 原生 UI 消息流协议，路由级 schema 随锁定版本细化，当前尚未实现。
+
+- 运行时 schema 已确认采用 Zod；业务公共 schema 放在 `packages/contracts`，由 schema 推导类型并校验外部输入。具体字段规则仍随契约评审固定，当前尚无可执行 schema。
+- 业务 API 前缀 `/api/v1`，JSON 使用 camelCase。Better Auth 管理的认证端点使用 `/api/auth/*`，采用其原生请求、响应和错误协议，不套用业务错误信封或幂等键约定。
+- 业务资源 ID 由应用生成 UUID v4，客户端按不透明字符串处理；认证表 ID 遵循 Better Auth 的选定 schema，业务中的用户外键必须匹配其实际类型，不强制转换为 UUID。
+- 时间统一输出 UTC ISO 8601（使用 `Z` 时区后缀），数据库时间字段使用 `timestamptz`，页面按用户时区显示。
+- 积分值使用十进制整数字符串，数据库使用 `bigint`，服务端采用精确整数运算，不经 JavaScript `number` 转换。余额和冻结额非负，流水增减及管理员调整可以为负；输入校验数据库可表示范围。
+- 认证已确认采用 Better Auth 数据库会话 + `HttpOnly` Cookie，首轮关闭 session cookie cache；远程 HTTPS 使用 `Secure`，同站部署设置合适的 `SameSite`。认证端点保留库的 Origin/CSRF 防护，业务写接口另行执行 Origin/CSRF 校验，不能仅依赖 Cookie 属性。受保护业务接口校验会话及当前账户状态、角色和资源归属。
 - 所有资源按会话用户判定归属，请求不接受 `ownerId`。未登录返回 401；普通用户访问后台返回 403；跨用户资源统一返回 404，避免暴露其是否存在。
-- 列表使用 `cursor`、`limit`，默认 20、最大 100；响应为 `{ items, nextCursor }`，排序包含稳定的 ID 次键。
-- 写任务、报价、管理员积分调整及可能引发外部副作用的操作使用 `Idempotency-Key`。相同 key 与相同规范化请求返回原资源，相同 key 不同请求返回 409。
+- 列表使用 `cursor`、`limit`，默认 20、最大 100；响应为 `{ items, nextCursor }`，结束时 `nextCursor` 为 null；排序包含稳定的 ID 次键。游标按不透明字符串处理并绑定筛选和排序条件，不能跨条件复用，也不能替代资源归属校验。
+- 写任务、报价、管理员积分调整及可能引发外部副作用的操作使用 `Idempotency-Key`，作用域为当前用户与操作。相同 key 与相同规范化请求返回原资源，相同 key 不同请求返回 409；数据库唯一约束兜底并发重复提交。
 - 失败格式为 `{ error: { code, message, retryable, requestId, details? } }`。`details` 不含密钥、栈跟踪或其他用户内容；客户端不能只凭 `retryable` 自动重提收费动作。
 - 任务状态以查询 API 为准。首轮前端可每 3 秒轮询活动任务，终态停止，页面隐藏时退避；断网恢复后先查询原任务，不能重发生成。
-- Nuxt 的页面路由中间件不能替代上述 API 鉴权。若采用 AI SDK 的流式 UI 协议，应先补充会话流的请求/事件 schema 与持久化映射；当前消息路由仍按下表 JSON 契约设计，不自动将它视为可直接接入 SDK 客户端的流接口。
+- Nuxt 的页面路由中间件不能替代上述 API 鉴权。对话消息 POST 返回 AI SDK 原生 UI 消息流，历史 GET 仍返回 JSON；流开始后的错误通过协议事件表达，具体边界见下文。
 
 ## 路由目录
 
 | 方法与路径 | 主要输入 / 输出 | 约束和关联需求 |
 | --- | --- | --- |
-| `POST /auth/register` | email、password → user | 注册限流；默认创作者角色；FR-01 |
-| `POST /auth/login` | email、password → user + 会话 Cookie | 统一失败提示；FR-01 |
-| `POST /auth/logout` | 撤销当前会话 → 204 | Cookie/服务端同时失效；FR-01 |
+| `POST /api/auth/sign-up/email`（完整路径） | Better Auth `signUp.email`；字段按锁定版本 schema | 注册限流；服务端设置默认创作者角色；FR-01 |
+| `POST /api/auth/sign-in/email`（完整路径） | Better Auth `signIn.email` → 原生响应及会话 Cookie | 统一失败提示；FR-01 |
+| `POST /api/auth/sign-out`（完整路径） | Better Auth `signOut` → 原生响应 | Cookie/服务端当前会话同时失效；FR-01 |
 | `GET /me` | 当前用户、角色、权益摘要 | 不返回密码摘要或后台密钥；FR-01/10 |
 | `GET /tools` | 工具能力、支持规格、可用状态和前置条件 | 不返回 Provider 密钥；FR-03/09 |
 | `GET/POST /conversations` | 列表 / 创建会话 | 当前用户范围；FR-02 |
-| `GET /conversations/:id/messages` | 历史消息、工具卡、关联 taskId | 游标分页；FR-02 |
-| `POST /conversations/:id/messages` | content、selectedAssetIds → message、Agent 回答或 toolCalls | 参数与资源鉴权；有规划预算，不直接执行收费工具；FR-02 |
+| `GET /conversations/:id/messages` | `{ items, nextCursor }`；items 为已持久化 UIMessage 及业务 metadata | 游标分页；FR-02 |
+| `POST /conversations/:id/messages` | content、selectedAssetIds、clientMessageId → AI SDK UI 消息流（SSE） | 参数与资源鉴权；按消息标识去重；有规划预算，不直接执行收费工具；FR-02 |
 | `PATCH /tool-calls/:id` | input、version → 更新后的提议 | 仅未确认提议可改；旧报价失效；FR-02/03 |
 | `POST /quotes` | toolCallId → Quote | 服务端计算价格，冻结输入；FR-07 |
 | `POST /tasks` | quoteId、retryOfTaskId? → 202 Task | 明确用户确认；一个报价一个任务；FR-03/04/07 |
@@ -61,7 +67,31 @@
 | `GET /admin/audit-logs` | cursor → 审计列表 | 只读脱敏；FR-08 |
 | `POST /webhooks/providers/:provider` | 外部事件 → 已接收 | 仅对支持回调的 Provider 开放；验签和去重，不能凭客户端 userId 归属 |
 
+除标明完整路径的 Better Auth 端点外，上表路径均相对于 `/api/v1`。原草案 `/auth/register`、`/auth/login`、`/auth/logout` 被原生认证端点替代，不再另建包装接口。`GET /me` 仍提供业务用户与权益摘要；Better Auth 会话数据不能代替业务授权检查。认证端点及客户端行为在锁定版本后验证。
+
 管理配置列表与详情接口应在实现 schema 时配套定义；配置新增版本不允许静默覆盖旧版。首轮不包含支付创建、充值回调或商户结算接口。
+
+## 对话消息流与持久化
+
+已确认采用 AI SDK 原生 UI Message Stream Protocol。POST 成功响应使用 `text/event-stream` 及 `x-vercel-ai-ui-message-stream: v1`，通过锁定版本的 SDK helper 生成，沿用原生消息开始、文本增量、工具输入/输出、错误和结束事件；不另造一套文本流协议。客户端 transport 将新消息映射为上述业务请求，并携带同源会话 Cookie，不能假设 SDK 默认请求体与本接口相同。
+
+服务端只接受本次用户文本、所选作品和客户端去重标识；从数据库加载可信历史，并校验会话及作品归属。客户端不得提交可信的 assistant/tool 历史、报价、任务状态或工具执行结果。`clientMessageId` 是客户端生成的 UUID v4，以用户、会话和该标识联合去重；相同标识不同规范化输入返回 409 `IDEMPOTENCY_CONFLICT`。数据库消息 ID 仍由服务端生成 UUID v4。
+
+| 流内容 | 持久化与业务映射 |
+| --- | --- |
+| 用户输入 | 模型调用前保存；映射为 role=user 的 UIMessage text part，并记录所选作品引用 |
+| 助手文本 | 保存 UIMessage 的 id、role、parts、metadata 和 schemaVersion；不保存或发送模型私有思维过程 |
+| 工具提议 | 原生 toolCallId 映射到持久化业务 tool_call 记录；校验并保存后才能成为可报价的工具卡，未完成的增量参数不可执行 |
+| 报价与任务引用 | metadata/类型化 data part 仅携带持久化资源引用；最新状态通过独立业务 API 查询，不以消息中的历史快照结算 |
+| 工具真实结果 | 服务端读取归属正确的任务及产物后关联回原 toolCallId，转换为 SDK 可接受的工具结果；不将“已提议”或“已受理”表示为生成成功 |
+
+业务报价仍调用 `POST /quotes`，用户确认仍调用 `POST /tasks`，任务状态仍通过 `GET /tasks/:id` 查询。SDK 原生工具事件用于表示提议与结果，不能触发绕过确认的收费执行。历史读取按 SDK UIMessage 形态还原，按锁定版本校验后转换为模型输入；业务工具记录不必伪装成独立 role=tool 的 UIMessage。
+
+流开始前的认证、校验或预算拒绝使用正常 HTTP 状态与业务错误信封；开始后无法改变 HTTP 状态，使用脱敏的原生 error 事件及业务错误 metadata/data part，携带稳定错误码和 requestId。具体自定义 part 的 Zod schema 随 SDK 版本建立，不向前端暴露 Provider 原始错误。
+
+消息记录区分 streaming、completed、interrupted、failed。完成时持久化最终 parts；中断或进程重启后不得把未完成消息标成成功，遗留 streaming 记录需恢复为 interrupted。刷新或断线先读取已持久化历史和关联任务；首轮不承诺从任意 token 位置续传。重复提交同一 clientMessageId 不重新调用模型：返回 409 `MESSAGE_ALREADY_ACCEPTED` 并提供原消息引用，客户端转为查询历史。用户明确重试使用新标识，并保留原中断记录；已有收费任务继续查询原 taskId，不自动重建。
+
+MF-04 及后续 Agent 实现需验证 Nuxt/Vue transport、文本和工具事件解析、历史重载、去重、断线恢复及独立确认流程。当前为协议设计，尚未完成集成验证。参考：[官方流协议](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)、[消息持久化](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-message-persistence)。
 
 ## 关键数据结构
 

@@ -1,6 +1,6 @@
 # 数据模型与字典
 
-状态：逻辑模型草案。关系数据库候选为 PostgreSQL，最终版本、查询库和 DDL 尚未确认。本文提供概念关系、领域类、核心字段和物理约束建议，不能称为已经建库或完成数据库验收。
+状态：逻辑模型草案。数据库与查询库已于 2026-09-20 确认为 PostgreSQL + Drizzle；具体版本、驱动和 DDL 尚未核验。迁移按[数据库与迁移约定](ARCHITECTURE.md#数据库与迁移约定)管理。本文提供概念关系、领域类、核心字段和物理约束建议，不能称为已经建库或完成数据库验收。
 
 ## 概念关系
 
@@ -32,7 +32,7 @@ ER 图展示核心关系，不穷举认证、配置和审计表。每个业务�
 classDiagram
     class Conversation {
         +id: UUID
-        +ownerId: UUID
+        +ownerId: string
         +appendMessage()
         +proposeTool()
     }
@@ -88,8 +88,8 @@ classDiagram
 
 ## 通用约定
 
-- 主键使用不透明 UUID；时间按 UTC 存储，API 输出 ISO 8601，页面本地化显示。
-- 积分采用非负精确整数；流水增减可以为负；API 使用十进制字符串，避免 JSON 数值精度丢失。
+- 业务资源主键使用应用生成的 UUID v4，客户端视为不透明字符串；认证表主键遵循 Better Auth schema，用户外键匹配其实际类型，不假设为 UUID。时间字段使用 `timestamptz`，API 输出 UTC ISO 8601（`Z` 后缀），页面本地化显示。
+- 积分使用 PostgreSQL `bigint` 和精确整数运算，余额及冻结额非负；流水增减可以为负；API 使用十进制整数字符串，避免 JSON 数值精度丢失，并校验数据库可表示范围。
 - 可变业务行有 `version` 用于条件更新；创建、更新和删除时间语义明确。
 - 任务输入、报价、权益、模型及规则版本保存快照。JSON 仅用于经过 schema 验证的变化字段，不替代所有者、状态和金额等可约束列。
 - 对话、样本和音频默认私有；演示数据必须有 `source_mode=mock|real|manual`，导入文件另记原始来源。
@@ -100,10 +100,10 @@ classDiagram
 
 | 表 | 主要字段 | 关键约束与用途 |
 | --- | --- | --- |
-| `users` | `email_normalized`、`password_hash`、`role`、`status`、`personalization_enabled` | 邮箱唯一；角色 creator/admin；认证方案确认后确定密码策略，绝不存明文密码 |
-| `sessions` | `user_id`、`token_hash`、`expires_at`、`revoked_at` | 服务端会话；令牌只存摘要；退出和停用可撤销 |
+| `users` | Better Auth 用户字段及业务字段 `role`、`status`、`personalization_enabled` | 邮箱唯一；角色 creator/admin，由服务端控制；实际字段及映射按锁定版本 schema 确定 |
+| 认证关联表 | Better Auth 的 account、session、verification 等 schema | 密码凭据与数据库会话交由 Better Auth 管理；不预设 users.password_hash 或 sessions.token_hash；实际表名、字段和迁移随选定 adapter 核验；退出撤销当前会话，停用撤销全部会话；凭据和会话令牌不得进入业务响应或日志 |
 | `conversations` | `owner_id`、`title`、`status` | 会话隔离；删除会话不自动删除账本或作品 |
-| `messages` | `conversation_id`、`owner_id`、`role`、`content`、`tool_call_id?` | 用户/助手/工具消息分开；结果引用真实 taskId |
+| `messages` | `conversation_id`、`owner_id`、`role`、`parts`、`metadata`、`schema_version`、`status`、`client_message_id?`、`request_id` | 持久化 UIMessage；用户输入按 owner/conversation/client_message_id 唯一去重；状态 streaming/completed/interrupted/failed；工具 part 关联业务工具记录和真实 taskId，不存私有思维过程；见 API 消息流映射 |
 | `tool_calls` | `owner_id`、`conversation_id`、`tool_name`、`input_snapshot`、`input_hash`、`status`、`confirmed_at?`、`version` | 保存提议、拒绝、确认、完成的证据；不保存模型私有思维过程 |
 | `provider_configs` | `provider_key`、`version`、`kind`、`adapter_id`、`model_id`、`base_url?`、`credential_ref`、`capabilities`、`parameter_mapping`、`enabled` | `(provider_key, version)` 唯一；kind 为 text/music/tts；发布版本不可覆盖，启停独立审计；凭据仅存服务端配置引用 |
 | `provider_defaults` | `kind`、`provider_config_id`、`version` | kind 唯一；切换时验证能力并审计，仅用于新请求和报价的选择 |
@@ -133,7 +133,7 @@ classDiagram
 
 `provider_snapshot` 保存配置 ID/版本、adapter、模型、规格映射及恢复原配置所需的引用，不复制密钥。报价、任务或声音档案仍引用的配置版本不能直接删除；凭据通过引用读取和轮换。默认切换不改历史快照，也不把原供应商的请求 ID 发送给新的供应商。
 
-若采用 PostgreSQL，UUID、`timestamptz`、`bigint`、有限长度字符串及 `jsonb` 分别承载 ID、时间、积分、状态和验证后的快照。金额运算和账务修改在数据库事务内完成。
+已确认 PostgreSQL 使用 UUID 承载业务资源 ID、`timestamptz` 承载时间、`bigint` 承载积分；认证表及用户外键按 Better Auth schema 映射。状态和验证后的快照建议分别使用有限长度字符串及 `jsonb`，具体字段约束随迁移评审固定。金额运算和账务修改在数据库事务内完成。
 
 | 访问模式 | 索引或约束建议 |
 | --- | --- |
