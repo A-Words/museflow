@@ -22,7 +22,7 @@ MuseFlow 是《软件工程课程设计》课题十二「AI音乐创作SaaS平�
 
 ## 开始协作
 
-协作仓库为公开的 [A-Words/museflow](https://github.com/A-Words/museflow)，文档基线维护在 `main`，已准备忽略规则及文本换行约定。当前 21 项任务仍是待发布草稿；发布后在 [GitHub Issues](https://github.com/A-Words/museflow/issues) 认领，并在本地清单补充真实链接，`MF-xx` 不代表远端 Issue 编号。
+协作仓库为公开的 [A-Words/museflow](https://github.com/A-Words/museflow)，文档基线维护在 `main`，已准备忽略规则及文本换行约定。21 项任务已发布到 [GitHub Issues](https://github.com/A-Words/museflow/issues)，成员在那里认领和更新进度；[任务索引](docs/ISSUE_BACKLOG.md#issue-索引)记录实际链接及依赖，`MF-xx` 不代表远端 Issue 编号。
 
 ```sh
 git clone https://github.com/A-Words/museflow.git
@@ -31,14 +31,14 @@ cd museflow
 
 以上只获取仓库；应用骨架尚未建立，暂不提供安装或启动命令。
 
-三人可以先认领 MF-01（必要技术选择与公共约定）、MF-02（页面原型）、MF-03（Provider 契约与样例）。MF-01 完成后，由 MF-04 统一建立应用骨架、锁定依赖并补齐启动说明。具体供应商、成员材料和交付日期可随后补充。
+首批无前置依赖的任务是 [MF-01 技术选择与公共约定](https://github.com/A-Words/museflow/issues/1)、[MF-02 页面原型](https://github.com/A-Words/museflow/issues/2)、[MF-03 Provider 契约与样例](https://github.com/A-Words/museflow/issues/3)，认领前查看对应 Issue 是否已有负责人。MF-01 完成后，由 MF-04 统一建立应用骨架、锁定依赖并补齐启动说明。具体供应商、成员材料和交付日期可随后补充。
 
 ## 文档状态
 
 - 版本：`v0.2`，创建于 `2026-09-17`，范围确认与文档整理于 `2026-09-20`；具体设计持续评审。
 - 已明确：以课题十二的四类模块和三项创新点为产品范围；3 人协作；使用 Nuxt + TypeScript；接受 P0/P1 分阶段实现；文本、音乐、TTS 采用可切换供应商的接口与适配器设计。
 - 推进方式：按功能阶段推进，当前不固定交付日期；P0 先完成核心流程，P1 补齐翻唱和声音克隆。课题外扩展不作为完成条件。
-- 协作方式：拆成 Issue 后由三名成员自行认领，每项一名主责、至少一名其他成员评审；不按成员长期固定前端、后端或 Agent 岗位。当前清单为本地草稿，尚未发布远端 Issue。
+- 协作方式：三名成员在 GitHub Issues 自行认领，每项一名主责、至少一名其他成员评审；不按成员长期固定前端、后端或 Agent 岗位。本地文档保留任务索引和范围，负责人、进度及验收证据在 Issue 中维护。
 - 当前提案：采用面向对象分析与设计，由 Nuxt 页面和服务端接口承载应用，独立 Worker 执行生成任务；Agent 工具层建议使用 AI SDK，暂不引入 LangGraph。
 - 后续细化：Agent 库、数据库、双积分业务含义，以及实际接入的供应商配置；按[技术选型与待定项](docs/ARCHITECTURE.md#技术选型与待定项)在相关 Issue 中处理。供应商与日期均不作为开始接口设计的前置条件。
 - 当前没有可执行的启动命令；运行说明将在项目骨架实际建立后补充。
