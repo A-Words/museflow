@@ -65,4 +65,31 @@ check('both wallets can be reconstructed from their ledger deltas',()=>{
  assert.equal(entries.reduce((n,e)=>n+BigInt(e.availableDelta),0n).toString(),s.wallets[currency].available);
  assert.equal(entries.reduce((n,e)=>n+BigInt(e.heldDelta),0n).toString(),s.wallets[currency].held);}
 });
+check('music form preserves selected language and style through delivery and filtering',()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+ const callbacks={},elements={};
+ const element=id=>elements[id]||=( {value:'',textContent:'',innerHTML:'',dataset:{},addEventListener(){},focus(){},scrollTo(){}} );
+ const context=vm.createContext({MF:M,structuredClone,console,
+  sessionStorage:{getItem(){return null;},setItem(){}},
+  document:{activeElement:null,querySelector:s=>s.startsWith('#')?element(s):null,
+   getElementById(){return null;},querySelectorAll(){return [];},addEventListener(type,callback){callbacks[type]=callback;}},
+  window:{addEventListener(){}},history:{replaceState(){}},location:{hash:''},
+  setTimeout(){},clearTimeout(){},setInterval(){}
+ });
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'app.js'),'utf8'),context);
+ const run=code=>vm.runInContext(code,context);
+ for(const style of ['氛围','流行']){
+  run("state=M.seed(M.fresh());state.logged=true;setIntent('创作音乐','music.generate');");
+  element('#parameter-text').value='创作音乐';element('#language').value='英文';element('#style').value=style;
+  callbacks.submit({target:{id:'clarify'},preventDefault(){}});
+  assert.equal(run('current().proposal.input.language'),'英文');
+  assert.equal(run('current().proposal.input.style'),style);
+  assert.match(run('proposalCard(current())'),/>英文<\/span>/);
+  assert.ok(run('proposalCard(current())').includes('>'+style+'</span>'));
+  run("M.quote(state,current());M.confirm(state,current());M.transition(state,activeTask(),'running');M.transition(state,activeTask(),'succeeded');");
+  assert.equal(run("state.assets.find(a=>a.kind==='audio').tags[0]"),style);
+  run('filters.tag='+JSON.stringify(style));
+  assert.ok(run('library()').includes('晚风来信 · 音乐'));
+ }
+});
 console.log(`${count} simulator checks passed; not production billing or concurrency tests.`);

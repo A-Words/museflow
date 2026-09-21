@@ -110,7 +110,7 @@ document.addEventListener('submit',e=>{const f=e.target;if(f.id==='auth-form'){e
  if(!text){$('#parameter-error').textContent='创作内容不能为空。';$('#parameter-text').setAttribute('aria-invalid','true');$('#parameter-text').focus();return;}
  const language=$('#language').value,style=$('#style')?.value||'轻音乐';
  c.intent=text;c.parameterDraft={text,language,style};
- const input=tool==='lyrics.generate'?{tool,theme:text,language,style,structure:'主歌 + 副歌'}:tool==='music.generate'?{tool,prompt:text+' / '+language+' / '+style,specificationId:'demo-audio-8s'}:{tool,text,voiceRef:'demo:soft',language,specificationId:'demo-tts-default'};
+ const input=tool==='lyrics.generate'?{tool,theme:text,language,style,structure:'主歌 + 副歌'}:tool==='music.generate'?{tool,prompt:text+' / '+language+' / '+style,language,style,specificationId:'demo-audio-8s'}:{tool,text,voiceRef:'demo:soft',language,specificationId:'demo-tts-default'};
  if(c.editing&&c.proposal?.input.lyricsAssetId)input.lyricsAssetId=c.proposal.input.lyricsAssetId;
  if(c.editing)M.editProposal(c,input);else M.proposal(c,tool,input);
  c.clarifying=false;c.editing=false;save();render();notify('参数已补齐；工具提议尚未执行。');
