@@ -82,7 +82,8 @@
     const task={
       id:uuid(),quoteId:q.id,toolCallId:q.toolCallId,conversationId:c.id,tool:c.proposal.tool,
       input:structuredClone(c.proposal.input),retryOfTaskId:c.proposal.retryOfTaskId,
-      priceVersion:q.priceVersion,status:'queued',sourceMode:'mock',assetIds:[],
+      priceVersion:q.priceVersion,planVersion:'demo-plan-'+s.admin.planVersion,
+      status:'queued',sourceMode:'mock',assetIds:[],
       reservation:{currency:q.currency,amount:q.amount,state:'held'},cancelSupported:true,
       allowedActions:['cancel'],createdAt:now(),updatedAt:now()
     };
