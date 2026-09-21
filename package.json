@@ -1,0 +1,29 @@
+{
+  "name": "museflow",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": { "node": ">=24.11.0 <25", "pnpm": "12.5.1" },
+  "scripts": {
+    "prepare": "pnpm build:packages && pnpm --filter @museflow/web nuxt:prepare",
+    "build:packages": "pnpm --filter @museflow/contracts --filter @museflow/database -r build",
+    "dev:web": "pnpm build:packages && pnpm --filter @museflow/web dev",
+    "dev:worker": "pnpm build:packages && pnpm --filter @museflow/worker dev",
+    "typecheck": "pnpm prepare && pnpm -r typecheck && tsc -p tsconfig.tests.json",
+    "lint": "pnpm --filter @museflow/web nuxt:prepare && eslint .",
+    "build": "pnpm build:packages && pnpm --filter @museflow/web build && pnpm --filter @museflow/worker build",
+    "test": "pnpm prepare && vitest run --config vitest.config.ts && pnpm --filter @museflow/web test",
+    "test:integration": "pnpm prepare && vitest run --config vitest.integration.config.ts",
+    "test:db": "pnpm build:packages && tsx --env-file-if-exists=.env scripts/check-database.ts"
+  },
+  "devDependencies": {
+    "@museflow/contracts": "workspace:*",
+    "@museflow/database": "workspace:*",
+    "@nuxt/test-utils": "4.3.2",
+    "@types/node": "24.13.6",
+    "eslint": "10.11.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}

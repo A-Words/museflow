@@ -4,7 +4,7 @@
 
 ## 测试层次
 
-已于 2026-09-20 确认采用 Vitest + Nuxt Test Utils，不引入 Playwright。自动化覆盖领域规则、API/数据库、Provider 契约及 Nuxt 集成；浏览器关键流程采用手动验收，保留用例、环境与实际结果证据。测试入口由 MF-04 建立，当前尚不可运行。
+已于 2026-09-20 确认采用 Vitest + Nuxt Test Utils，不引入 Playwright。自动化目标覆盖领域规则、API/数据库、Provider 契约及 Nuxt 集成；浏览器关键流程采用手动验收，用例、环境与实际结果证据记录在对应 Issue/PR。MF-04 已建立 `pnpm test`、`pnpm test:integration` 和 `pnpm test:db`，当前只覆盖骨架与基础兼容性，不等于以下业务 T-xx 已通过。
 
 | 层次 | 验证内容 | 依赖 |
 | --- | --- | --- |

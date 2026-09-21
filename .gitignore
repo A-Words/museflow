@@ -7,6 +7,8 @@ dist/
 coverage/
 .cache/
 .pnpm-store/
+# Local setup marker written by Nuxt Test Utils
+/apps/web/.nuxtrc
 *.tsbuildinfo
 
 # Local configuration; keep safe examples tracked

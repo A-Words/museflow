@@ -21,6 +21,8 @@
 
 ## 路由目录
 
+MF-04 已实现公共存活检查 `GET /api/v1/health`，返回 `{ "status": "ok", "service": "web" }`，schema 位于 `@museflow/contracts`。该接口不执行数据库查询，也不表示 Worker、数据库或 Provider 就绪，不返回配置值。下表其余业务路由仍是待实现契约。
+
 | 方法与路径 | 主要输入 / 输出 | 约束和关联需求 |
 | --- | --- | --- |
 | `POST /api/auth/sign-up/email`（完整路径） | Better Auth `signUp.email`；字段按锁定版本 schema | 注册限流；服务端设置默认创作者角色；FR-01 |
