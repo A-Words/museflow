@@ -4,21 +4,21 @@
 
 ## 技术选型与待定项
 
-下表首轮技术选择已于 2026-09-20 逐项确认，包括 UI、校验、测试和存储方向；公共 API 约定及 AI SDK 原生 UI 消息流见接口文档。所有依赖组合尚未安装或验证，MF-01 仍需另两位协作者评审；具体版本及部署服务按下文核验，不将选型确认视为实现完成。
+下表首轮技术选择已于 2026-09-20 逐项确认，包括 UI、校验、测试和存储方向；公共 API 约定及 AI SDK 原生 UI 消息流见接口文档。MF-01 已关闭；MF-04 已建立基础设施与兼容性骨架。基础兼容性不代表业务功能已经实现。
 
 | 层 | 状态与方案 | 依据和后续工作 |
 | --- | --- | --- |
-| Web | **已确认：Nuxt + TypeScript** | 初始化时锁定兼容版本，启用严格类型检查 |
-| API | **已确认：Nuxt Nitro，使用 `server/api`**（2026-09-20） | 页面与 API 同源；保留业务模块和 REST 契约；尚未建立路由 |
-| Agent | **已确认：AI SDK**（2026-09-20） | 模型接入、流式响应和有界工具循环；业务状态自行持久化，首轮不引入 LangGraph；尚未安装验证 |
-| Worker | **已确认：独立 Node.js + TypeScript 进程**（2026-09-20） | 共享领域规则；耗时生成与 Web 请求分开执行；尚未实现 |
-| 数据库与查询库 | **已确认：PostgreSQL + Drizzle**（2026-09-20） | 类型化查询与可评审 SQL；版本、驱动及兼容性在初始化时核验，事务、唯一约束、任务领取及账本并发需实测 |
+| Web | **已确认：Nuxt + TypeScript** | Nuxt 4 骨架及严格类型检查已建立 |
+| API | **已确认：Nuxt Nitro，使用 `server/api`**（2026-09-20） | 页面与 API 同源；已建立 health 路由，业务 API 待实现 |
+| Agent | **已确认：AI SDK**（2026-09-20） | 已验证 Mock 消息流；真实模型、工具循环和持久化待实现，首轮不引入 LangGraph |
+| Worker | **暂不引入独立进程**（2026-09-22 调整） | MF-08 按实际 Provider、持久化任务与恢复需求确定执行方式 |
+| 数据库与查询库 | **已确认：PostgreSQL + Drizzle**（2026-09-20） | 已验证连接查询和连接池关闭；业务迁移、事务、唯一约束、任务领取及账本并发仍需实测 |
 | 文件 | **已确认：开发期私有文件目录，部署期私有对象存储**（2026-09-20） | 通过统一 Storage Adapter 访问；具体对象存储服务在部署时选择；尚未实现 |
-| 认证 | **已确认：Better Auth + 数据库会话**（2026-09-20） | 负责邮箱密码认证与会话；业务权限、账户状态和资源归属由应用校验；尚未安装验证 |
-| 包管理 | **已确认：pnpm workspace**（2026-09-20） | 管理 Web、Worker 和共享包；MF-04 固定包管理器版本、提交锁文件并验证安装与包间依赖 |
-| 运行时 schema | **已确认：Zod**（2026-09-20） | 校验 API 请求、工具参数和 Provider 响应；公共契约放在 `packages/contracts`；尚未安装验证 |
-| 测试 | **已确认：Vitest + Nuxt Test Utils，不引入 Playwright**（2026-09-20） | 领域、API/数据库及 Nuxt 集成测试；浏览器关键流程手动验收；尚未建立测试入口 |
-| UI | **已确认：Nuxt UI + Tailwind CSS**（2026-09-20） | 复用表单、弹窗、导航和后台表格；创作工作区及音频播放器按产品需求定制；尚未安装验证 |
+| 认证 | **已确认：Better Auth + 数据库会话**（2026-09-20） | 已验证 Drizzle adapter 与 Vue 客户端实例构造；认证表和实际会话待 MF-05/06 |
+| 包管理 | **已确认：pnpm，单个 Nuxt 项目**（2026-09-22 调整） | 固定版本并提交锁文件；不再拆分 Web、Worker 和共享包 |
+| 运行时 schema | **已确认：Zod**（2026-09-20） | 已用于 health 契约和配置校验；公共契约放在 `shared/contracts` |
+| 测试 | **已确认：Vitest + Nuxt Test Utils，不引入 Playwright**（2026-09-20） | 已建立单元、组件、SSR/API 与独立数据库检查入口；关键浏览器流程手动验收 |
+| UI | **已确认：Nuxt UI + Tailwind CSS**（2026-09-20） | 已接入检查表单和弹窗；创作工作区及音频播放器留给业务 Issue |
 
 其余细节随相应 Issue 确定：双积分含义、价格和权益由 MF-07 评审；具体供应商、账号及预算在真实接入前确认；声音衍生作品的撤销/删除政策在 MF-17 明确。部署平台按实际演示需要选择，成员信息及课程材料见[课程要求](COURSE_REQUIREMENTS.md)。这些事项不重新打开已确认的课题范围、P0/P1 或日期策略。
 
@@ -26,49 +26,49 @@
 
 ## MF-04 依赖与版本核验方案
 
-初始化时先核对官方安装说明、运行时要求和 peer dependencies，再记录实际选用版本及验证结果。当前不预填未经安装验证的版本号。
+依赖变更时按以下清单核验官方安装说明、运行时要求和 peer dependencies；实际版本以 `package.json` 和 `pnpm-lock.yaml` 为准。下表保留各组合后续接入需要验证的边界。
 
 | 组合 | 待核验内容 |
 | --- | --- |
-| Node.js、pnpm、Nuxt、TypeScript | 选择共同支持的 Node.js 版本，固定 pnpm 版本，启用严格类型检查；验证 workspace 安装、共享包引用及 Web/Worker 构建启动 |
+| Node.js、pnpm、Nuxt、TypeScript | 选择共同支持的 Node.js 版本，固定 pnpm 版本，启用严格类型检查；验证锁文件安装及根目录 Nuxt 构建启动 |
 | Nuxt UI、Tailwind CSS、Nuxt | 按 Nuxt UI 官方集成方式配置；验证 SSR、水合、表单和弹窗的基本交互，页面效果手动验收 |
 | AI SDK、Vue 客户端、Zod | 核验工具 schema、UI 消息流、transport 和历史消息转换；Provider 专用包按实际 adapter 引入 |
 | PostgreSQL、Drizzle ORM/Kit、数据库驱动、Better Auth | 核验数据库 adapter、认证 schema 和统一迁移入口；基础建库及认证接入通过后再推进领域迁移 |
 | Vitest、Nuxt Test Utils、Nuxt | 核验测试环境及配套依赖；运行领域与 Nuxt 集成样例，不引入 Playwright |
 
-提交 workspace 配置、锁文件、运行时要求及不含凭据的配置示例，在 README 记录实际可运行的 `typecheck`、`build`、`test` 和 `test:integration` 入口。使用锁文件进行干净安装，并记录执行命令、环境与结果；未通过的组合标明阻塞原因。代码检查工具及具体脚本在骨架初始化时按 Nuxt 配套配置确定。上述入口目前仅为计划，不代表仓库已有可运行命令。
+pnpm 安装策略、锁文件、运行时要求及不含真实凭据的配置示例已加入；README 记录 `typecheck`、`lint`、`build`、`test`、`test:integration` 和 `test:db`。代码检查使用 Nuxt ESLint 配套配置及公共导入边界规则。具体变更的验证结果记录在对应 Issue/PR；迁移、认证会话和真实 Provider 需分别验收。
 
 UI 采用 [Nuxt UI](https://ui.nuxt.com/) + Tailwind CSS；MF-02 负责布局与交互原型，组件库选型不替代产品设计。对象存储服务、具体 Provider 及双积分业务参数仍由对应任务确定，不阻塞本项技术选型。
 
 ## 校验与测试约定
 
-运行时校验采用 Zod，公共请求/响应 schema 统一放在 `packages/contracts` 并推导 TypeScript 类型；Provider 特有 schema 留在服务端适配器包。共享类型不能代替对外部输入的实际解析与验证。
+运行时校验采用 Zod，公共请求/响应 schema 统一放在 `shared/contracts` 并推导 TypeScript 类型；Provider 特有 schema 留在服务端适配器。共享类型不能代替对外部输入的实际解析与验证。
 
 测试采用 Vitest 和 Nuxt Test Utils，分别覆盖领域规则、API/数据库及 Nuxt 组件和应用集成；首轮不引入 Playwright 或建立浏览器自动化测试入口。注册登录、对话确认、刷新恢复、试听下载和后台等关键流程按[测试计划](TEST_PLAN.md)手动验收并记录证据。
 
-MF-04 核验 Zod 与 AI SDK、Vitest 与 Nuxt Test Utils 的版本兼容性，建立 `test` 和 `test:integration` 入口；具体脚本随骨架实现，当前不能作为可执行命令。数据库并发测试使用真实 PostgreSQL，普通测试默认不调用收费 Provider，真实服务验证单独执行。
+MF-04 已建立 Zod/AI SDK 与 Vitest/Nuxt Test Utils 的基础兼容性测试及可运行入口。数据库并发测试仍需由业务 Issue 使用真实 PostgreSQL，不能以连接检查替代事务、唯一约束和行锁验收。普通测试不调用收费 Provider，真实服务验证单独执行。
 
 ## 认证接入约定
 
-采用 Better Auth 的邮箱密码认证和数据库会话。按官方 Nuxt 集成将 handler 挂载到 `apps/web/server/api/auth/[...all].ts`，认证端点使用 `/api/auth/*`，前端通过 `better-auth/vue` 客户端调用；业务 API 保留 `/api/v1/*`。
+采用 Better Auth 的邮箱密码认证和数据库会话。按官方 Nuxt 集成将 handler 挂载到 `server/api/auth/[...all].ts`，认证端点使用 `/api/auth/*`，前端通过 `better-auth/vue` 客户端调用；业务 API 保留 `/api/v1/*`。
 
 首轮关闭 session cookie cache，每次受保护业务请求在服务端验证会话，并检查当前账户状态、角色和资源归属。退出撤销当前会话；停用账户撤销其全部会话，并由业务层阻止停用用户继续操作。页面导航守卫不能替代这些检查。认证端点保留 Better Auth 的 Origin/CSRF 防护，业务写接口另行执行同源及 CSRF 校验。
 
-认证表由选定版本的 Better Auth schema 和数据库 adapter 确定，不另行假设密码保存在 users 表或会话令牌必定以摘要形式存储。数据库与查询库已确认为 PostgreSQL + Drizzle；MF-04 核验 Better Auth 的 Drizzle adapter，锁定兼容版本并验证 handler、迁移和客户端接入，认证任务补齐注册、登录、退出、账户停用、越权和 CSRF 验证。当前仅确认方案，尚未实现。
+认证表由选定版本的 Better Auth schema 和数据库 adapter 确定，不另行假设密码保存在 users 表或会话令牌必定以摘要形式存储。MF-04 仅锁定依赖并验证 Better Auth、Drizzle adapter 与 Vue 客户端的实例构造；MF-05 建立统一迁移，MF-06 实现 handler 路由及注册、登录、退出、账户停用、越权和 CSRF 验证。当前没有已运行的认证业务。
 
 参考：[Nuxt 集成](https://better-auth.com/docs/integrations/nuxt)、[会话与缓存撤销限制](https://better-auth.com/docs/concepts/session-management)。
 
 ## 数据库与迁移约定
 
-采用 PostgreSQL + Drizzle。Drizzle 提供类型化数据访问，关键账本事务、行锁和任务领取允许使用显式参数化 SQL，不能以 ORM 调用替代对并发语义的检查。数据库 schema、数据访问与迁移统一放在 `packages/database`，Web 与 Worker 共享。
+采用 PostgreSQL + Drizzle。Drizzle 提供类型化数据访问，关键账本事务、行锁和任务领取允许使用显式参数化 SQL，不能以 ORM 调用替代对并发语义的检查。数据库连接及后续 schema、数据访问与迁移统一放在 `server/database`，仅由服务端使用。
 
 以 Drizzle schema 维护物理定义，生成的迁移 SQL 经评审后提交仓库，并通过统一迁移入口应用；自定义约束及 SQL 同样纳入迁移。已应用的迁移不回写，后续变更新增迁移。Better Auth 所需 schema 也纳入这套迁移，避免两套工具分别管理相同认证表。具体命令在版本核验后建立。
 
-MF-04 核验 PostgreSQL、Drizzle ORM/Kit、数据库驱动及 Better Auth adapter 的版本组合并固定依赖；MF-05 提供基础迁移并验证空库初始化、已有库升级及约束。账本与 Worker 的集成测试使用真实 PostgreSQL，验证重复提交、余额并发、任务竞争领取及回滚；Mock 不能替代这些数据库语义测试。当前尚无已运行的迁移或兼容性证据。
+MF-04 固定 PostgreSQL、Drizzle ORM/Kit、数据库驱动及 Better Auth adapter 的版本组合，验证连接和基础兼容性；MF-05 提供基础迁移并验证空库初始化、已有库升级及约束。账本与 Worker 的集成测试使用真实 PostgreSQL，验证重复提交、余额并发、任务竞争领取及回滚；Mock 不能替代这些数据库语义测试。当前尚无已运行的业务迁移。
 
 ## 设计路线与系统边界
 
-采用面向对象分析与设计，提供用例图、领域类图、状态图和时序图。已确认由同一 Nuxt 应用承载页面及 Nitro API，业务模块保持清晰职责；Worker 作为独立 Node.js + TypeScript 进程启动，共享领域规则与数据库。Web、Worker 和共享包通过 pnpm workspace 管理。首轮不按团队人数拆成三个微服务。
+采用面向对象分析与设计，提供用例图、领域类图、状态图和时序图。已确认由同一 Nuxt 应用承载页面及 Nitro API，业务模块保持清晰职责；项目根目录采用 Nuxt 标准结构，暂不启动独立 Worker，也不拆共享包。任务执行方式由后续 MF-08 根据实际需求确定。首轮不按团队人数拆成三个微服务。
 
 ```mermaid
 flowchart LR
@@ -85,7 +85,7 @@ flowchart LR
     Assets --> DB
     Billing --> DB
     Jobs --> DB
-    Worker[TypeScript Worker] --> DB
+    Worker[任务执行服务 待实现] --> DB
     Worker --> Provider[文本 音乐 语音服务适配器]
     Provider --> External[外部 AI 服务]
     Worker --> Storage[(私有文件或对象存储)]
@@ -167,7 +167,7 @@ UC11 ..> UC12 : <<include>>
 
 采用受限的“观察 → 选择工具 → 确认 → 执行 → 观察结果”循环。首轮每次用户输入最多产生 3 个待执行步骤，每个收费步骤单独确认；模型上下文只带必要会话片段、当前用户选择的作品与可用工具能力。
 
-已于 2026-09-20 确认使用 AI SDK 负责模型接入、流式响应和有界工具循环，TypeScript 领域模块负责工具注册、参数与权限校验、报价确认和任务创建。SDK 内的工具动作可以返回提议或 taskId；收费任务只有经服务端校验用户确认后才可创建，不应阻塞等待整首音乐生成。待任务结果入库后，再加载会话和工具结果进入下一轮。当前仅确认选型，没有安装或运行验证。
+已于 2026-09-20 确认使用 AI SDK 负责模型接入、流式响应和有界工具循环，TypeScript 领域模块负责工具注册、参数与权限校验、报价确认和任务创建。SDK 内的工具动作可以返回提议或 taskId；收费任务只有经服务端校验用户确认后才可创建，不应阻塞等待整首音乐生成。待任务结果入库后，再加载会话和工具结果进入下一轮。MF-04 已验证 Mock 模型消息流、Zod schema、Vue transport 和历史消息转换，尚未实现业务 Agent。
 
 当前只有一个创作助手，每个收费步骤由用户确认，长时间等待由业务任务系统承接，因此首轮无需额外引入图编排框架。具体选择如下：
 
@@ -215,13 +215,13 @@ MF-04 初始化时锁定 AI SDK 与 Nuxt/Vue 的兼容版本，并建立基础�
 
 数据库保存逻辑 `storage_key` 等元数据，业务模块不依赖本地绝对路径或供应商公开 URL。音频、封面和声音样本不能放入 Nuxt `public` 目录或公开 bucket。预览和下载沿用鉴权后的内容 API，校验归属及资源状态，并支持音频 Range；存储 adapter 不代替业务授权。
 
-本地运行时 Web 与 Worker 需访问同一配置的私有存储根目录；部署后访问同一私有对象存储。产物暂存、校验、幂等归档以及删除先撤销访问再清理文件的规则沿用现有流程。adapter 的读写、Range、删除及归档失败恢复在实现后验证；选型确认不代表这些能力已验收。
+本地运行时 Nuxt 服务端访问配置的私有存储根目录；部署后访问同一私有对象存储。产物暂存、校验、幂等归档以及删除先撤销访问再清理文件的规则沿用现有流程。adapter 的读写、Range、删除及归档失败恢复在实现后验证；选型确认不代表这些能力已验收。
 
 ## 部署和恢复提案
 
-首轮本地运行 Nuxt 应用（页面与 Nitro API）、独立 Worker、关系数据库及私有存储。建议 Nuxt 采用 Node.js 服务端部署，Web 与 API 保持同源，简化 Cookie、跨域与访问控制；外部 Provider 凭据仅由后端读取。远程环境使用 HTTPS。持续执行的 Worker 不依赖请求结束后的进程存活假设。
+首轮本地运行 Nuxt 应用（页面与 Nitro API）、关系数据库及私有存储，暂不部署独立 Worker。建议 Nuxt 采用 Node.js 服务端部署，Web 与 API 保持同源，简化 Cookie、跨域与访问控制；外部 Provider 凭据仅由后端读取。远程环境使用 HTTPS。后续后台任务必须有持久化与恢复机制，不能依赖请求结束后的进程存活假设。
 
-任务以数据库记录作为事实来源。初期 Worker 从持久化任务表领取任务，领取时加短事务锁和租约，执行时释放锁。租约过期后先判断 Provider 是否已接受请求，再决定查询或安全重试；不能把所有中断直接重排。只有观测到吞吐或运维需求后才讨论独立消息队列。
+任务以数据库记录作为事实来源。MF-08 若采用后台执行器，应从持久化任务表领取任务，领取时加短事务锁和租约，执行时释放锁。租约过期后先判断 Provider 是否已接受请求，再决定查询或安全重试；不能把所有中断直接重排。只有观测到吞吐或运维需求后才讨论独立消息队列。
 
 数据库事务不能覆盖外部网络与对象存储。任务使用稳定请求标识、暂存对象、结果校验和幂等提交补足边界；无引用的暂存文件由清理任务回收。详情见[创作与积分流程](WORKFLOWS.md)。
 
@@ -229,22 +229,22 @@ MF-04 初始化时锁定 AI SDK 与 Nuxt/Vue 的兼容版本，并建立基础�
 
 ## 建议代码布局
 
-以下是计划中的代码布局。当前只保留 `apps/web/prototype` 静态原型；其余目录、生产代码和工具链由 MF-04 按实际实现初始化，不提前保留空目录。
+项目根目录就是 Nuxt 应用根目录，暂不设独立 Worker 或多包 workspace。MF-02 静态原型位于 `prototype/`，不参与 Nuxt 页面路由或静态资源发布。
 
 ```text
-apps/web/                 Nuxt 应用与配置
-apps/web/app/             工作区、管理页面、组件和 composables
-apps/web/server/api/      Nitro HTTP 入口，保留 /api/v1 契约
-apps/web/server/modules/  认证、业务服务和 Agent 编排
-apps/worker/              耗时生成、Provider 查询、产物归档
-packages/contracts/      请求/响应 schema、类型和稳定错误码
-packages/domain/         任务、账本、权限及推荐规则
-packages/providers/      文本、音乐、TTS 等适配器和 Mock
-packages/database/       迁移、数据访问与种子数据
-docs/                    需求、设计、Issue 及验收资料
+app/                     页面、组件、样式和 composables
+server/api/              Nitro HTTP 入口，保留 /api/v1 契约
+server/services/         服务端配置和后续业务服务
+server/database/         数据库连接；迁移及 schema 由 MF-05 建立
+shared/contracts/        前后端公共 Zod schema 和类型
+prototype/               独立静态原型
+tests/                   单元、Nuxt 组件及 SSR/API 集成测试
+nuxt.config.ts           Nuxt 配置
 ```
 
-上述 Nuxt 目录按当前官方文档组织，版本锁定时再核对。前端只依赖可公开的 contracts；不得从数据库或 Provider 包导入密钥配置。共享 TypeScript 类型不能替代运行时验证，HTTP 和 Provider 响应均须校验。Nuxt 页面路由中间件只处理页面导航，API 必须在 Nitro 服务端独立鉴权。
+使用 Nuxt 4 默认 `app/`、`server/` 与 `shared/`，不自定义 `srcDir`；`server/modules` 留给 Nitro 扩展模块，业务代码使用 `server/services`。根目录 tsconfig 引用 Nuxt 生成的 app/server/shared/node 四个类型上下文，不覆写生成的路径别名。公共 schema 通过 `#shared/contracts/health` 等路径显式导入，不重复维护。
+
+前端和 shared 不能依赖数据库或服务端配置。ESLint 检查直接导入、再导出、动态导入和 require；新增客户端依赖需显式更新允许列表并评审。共享 TypeScript 类型不能替代运行时验证，HTTP 和 Provider 响应均须校验。Nuxt 页面路由中间件只处理页面导航，API 必须在 Nitro 服务端独立鉴权。
 
 ## 选型参考
 

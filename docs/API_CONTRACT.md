@@ -6,7 +6,7 @@
 
 以下 ID、时间、积分表示、分页、错误及幂等规则已于 2026-09-20 确认；对话采用 AI SDK 原生 UI 消息流协议，路由级 schema 随锁定版本细化，当前尚未实现。
 
-- 运行时 schema 已确认采用 Zod；业务公共 schema 放在 `packages/contracts`，由 schema 推导类型并校验外部输入。具体字段规则仍随契约评审固定，当前尚无可执行 schema。
+- 运行时 schema 已确认采用 Zod；业务公共 schema 放在 `shared/contracts`，由 schema 推导类型并校验外部输入。具体字段规则仍随契约评审固定，当前尚无可执行 schema。
 - 业务 API 前缀 `/api/v1`，JSON 使用 camelCase。Better Auth 管理的认证端点使用 `/api/auth/*`，采用其原生请求、响应和错误协议，不套用业务错误信封或幂等键约定。
 - 业务资源 ID 由应用生成 UUID v4，客户端按不透明字符串处理；认证表 ID 遵循 Better Auth 的选定 schema，业务中的用户外键必须匹配其实际类型，不强制转换为 UUID。
 - 时间统一输出 UTC ISO 8601（使用 `Z` 时区后缀），数据库时间字段使用 `timestamptz`，页面按用户时区显示。
@@ -20,6 +20,8 @@
 - Nuxt 的页面路由中间件不能替代上述 API 鉴权。对话消息 POST 返回 AI SDK 原生 UI 消息流，历史 GET 仍返回 JSON；流开始后的错误通过协议事件表达，具体边界见下文。
 
 ## 路由目录
+
+MF-04 已实现公共存活检查 `GET /api/v1/health`，返回 `{ "status": "ok", "service": "web" }`，schema 位于 `shared/contracts/health.ts`。该接口不执行数据库查询，也不表示 Worker、数据库或 Provider 就绪，不返回配置值。下表其余业务路由仍是待实现契约。
 
 | 方法与路径 | 主要输入 / 输出 | 约束和关联需求 |
 | --- | --- | --- |

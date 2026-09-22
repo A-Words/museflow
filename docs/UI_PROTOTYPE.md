@@ -15,19 +15,19 @@
 在仓库根目录运行（Python 3 标准库，无第三方安装）：
 
 ```sh
-python -m http.server 4173 --bind 127.0.0.1 --directory apps/web/prototype
+python -m http.server 4173 --bind 127.0.0.1 --directory prototype
 ```
 
 浏览器打开 <http://127.0.0.1:4173/>。停止服务用 Ctrl+C。无需构建。推荐 HTTP 打开，不将 `file://` 双击作为验收路径（UUID、安全上下文和存储支持随浏览器不同）。
 
-入口：[apps/web/prototype/index.html](../apps/web/prototype/index.html)。文件组织：
+入口：[prototype/index.html](../prototype/index.html)。文件组织：
 
 - `index.html`：语义骨架、全局模拟标识、状态播报和原生 dialog。
 - `styles.css`：Design Tokens、布局、组件与断点。
 - `model.js`：纯本地状态模拟器、报价/任务/账本与演示数据。
 - `app.js`：页面、导航、表单、场景及本地交互。
 - `assets/cover.svg`、`assets/sample.wav`：自制素材；`generate_sample.py` 可重新生成音频。
-- `check-model.cjs`：无需框架的风险定向状态检查，运行 `node apps/web/prototype/check-model.cjs`（实测 Node 22.20.0）。
+- `check-model.cjs`：无需框架的风险定向状态检查，运行 `node prototype/check-model.cjs`（实测 Node 22.20.0）。
 
 模拟邮箱默认 `creator@example.test`，密码是不可编辑占位，不读取、不发送、不保存真实密码，邮箱和昵称不写入存储。点击“模拟登录”进入工作区；注册页同样只有模拟提交。
 
@@ -177,7 +177,7 @@ python -m http.server 4173 --bind 127.0.0.1 --directory apps/web/prototype
 | 检查 | 实际结果 |
 | --- | --- |
 | `node --check` app.js / model.js | 通过；初次发现 model.js 数组括号缺失，修正后复查通过 |
-| `node apps/web/prototype/check-model.cjs` | 19 项通过：含未确认不建任务、重复确认幂等、结算/释放一次、未知保留冻结、取消、过期/不足、双钱包、JSON 恢复、重试关联、精确整数、输入/工具/并发拦截；并覆盖重试编辑继承、被删歌词引用、派发前删除、取消能力保持、人工版本隔离、输入快照和双账本重建 |
+| `node prototype/check-model.cjs` | 19 项通过：含未确认不建任务、重复确认幂等、结算/释放一次、未知保留冻结、取消、过期/不足、双钱包、JSON 恢复、重试关联、精确整数、输入/工具/并发拦截；并覆盖重试编辑继承、被删歌词引用、派发前删除、取消能力保持、人工版本隔离、输入快照和双账本重建 |
 | 登录及校验 | 浏览器正常登录、提交中、无效邮箱、停用提示可观察；另一次模拟错误提示已观察 |
 | 登录按钮层级 | 9 月 21 日按页面截图复查：宽屏页面铺满可用高度，默认显示登录；注册降为右上角紧凑的“用户加号 + 注册”入口，注册页显示“返回箭头 + 返回登录”；页面只保留一个实心主提交。两种模式的标题、字段、焦点与按钮文案已在浏览器复验 |
 | 歌词 → 音乐 | 浏览器完成澄清、提议、两次独立报价/确认、排队、运行、归档；歌词 8、音乐 24，创作余额 88、语音 60 |

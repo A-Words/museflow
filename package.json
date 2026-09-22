@@ -1,0 +1,48 @@
+{
+  "name": "museflow",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": ">=24.11.0 <25",
+    "pnpm": "12.5.1"
+  },
+  "scripts": {
+    "postinstall": "nuxt prepare",
+    "dev": "nuxt dev --host 127.0.0.1",
+    "build": "nuxt build",
+    "start": "node --env-file-if-exists=.env .output/server/index.mjs",
+    "typecheck": "nuxt prepare && nuxt typecheck && tsc -p tsconfig.tests.json",
+    "lint": "nuxt prepare && eslint .",
+    "test": "nuxt prepare && vitest run --config vitest.config.ts && vitest run --config vitest.nuxt.config.ts",
+    "test:integration": "nuxt prepare && vitest run --config vitest.integration.config.ts",
+    "test:db": "tsx --env-file-if-exists=.env scripts/check-database.ts"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "4.3.2",
+    "@types/node": "24.13.6",
+    "eslint": "10.11.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1",
+    "@nuxt/eslint": "1.17.0",
+    "@vue/test-utils": "2.5.1",
+    "happy-dom": "20.14.5",
+    "vue-tsc": "3.3.11",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "1.2.135",
+    "@ai-sdk/vue": "4.0.107",
+    "@nuxt/ui": "4.11.1",
+    "ai": "7.0.107",
+    "better-auth": "1.7.5",
+    "nuxt": "4.5.2",
+    "tailwindcss": "4.3.3",
+    "vue": "3.5.43",
+    "zod": "4.6.5",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0"
+  }
+}
