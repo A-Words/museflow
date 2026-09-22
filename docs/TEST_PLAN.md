@@ -6,7 +6,11 @@
 
 ## 测试层次
 
+功能是否「完善」的操作性判定（八个测试维度、各层方法分工、五条准入标准、常见遗漏点与可复制检查清单）见 **[功能完备性检查清单](FUNCTION_READINESS_CHECKLIST.md)**。本文定义要验证什么，该清单定义怎么系统地验证以及何时可以宣称完成。
+
 已于 2026-09-20 确认采用 Vitest + Nuxt Test Utils，不引入 Playwright。自动化目标覆盖领域规则、API/数据库、Provider 契约及 Nuxt 集成；浏览器关键流程采用手动验收，用例、环境与实际结果证据记录在对应 Issue/PR。MF-04 已建立 `pnpm test`、`pnpm test:integration` 和 `pnpm test:db`，当前只覆盖骨架与基础兼容性，不等于以下业务 T-xx 已通过。
+
+MF-03 另建立 **`pnpm test:contract`**（`mock/providers/check-contract.ts`），无需框架、网络、账号或数据库，验证三类端口的统一结果语义、能力声明完整性、能力不匹配样例 CM-01 ~ CM-12 与配置快照路由规则。它是契约自检，**不代表任何真实供应商能力已验收**。
 
 | 层次 | 验证内容 | 依赖 |
 | --- | --- | --- |

@@ -16,7 +16,8 @@
     "lint": "nuxt prepare && eslint .",
     "test": "nuxt prepare && vitest run --config vitest.config.ts && vitest run --config vitest.nuxt.config.ts",
     "test:integration": "nuxt prepare && vitest run --config vitest.integration.config.ts",
-    "test:db": "tsx --env-file-if-exists=.env scripts/check-database.ts"
+    "test:db": "tsx --env-file-if-exists=.env scripts/check-database.ts",
+    "test:contract": "node --experimental-strip-types mock/providers/check-contract.ts"
   },
   "devDependencies": {
     "@nuxt/test-utils": "4.3.2",

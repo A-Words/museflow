@@ -22,6 +22,7 @@ MF-02 的本地原型与说明已具备评审条件；完成验收要求包括�
 | [系统架构与技术选型](docs/ARCHITECTURE.md) | 已确认与待定选型、Agent 方案、模块职责和部署设计 |
 | [数据模型与字典](docs/DATA_MODEL.md) | 核心实体、关系、约束、索引及数据生命周期 |
 | [创作与积分流程](docs/WORKFLOWS.md) | Agent 如何调用工具，异步任务和积分怎样保持一致 |
+| [Provider 内部契约](docs/PROVIDER_CONTRACT.md) | 三类端口、能力声明、配置切换、错误与重试边界、可控 Mock 样例 |
 | [接口契约草案](docs/API_CONTRACT.md) | 前后端、Agent、任务服务如何协作 |
 | [测试与验收计划](docs/TEST_PLAN.md) | 功能、隔离、故障、推荐和计费需要什么证据 |
 | [可认领 Issue 清单](docs/ISSUE_BACKLOG.md) | 推进阶段，每项的范围、依赖、验收条件和完成证据 |
@@ -64,11 +65,12 @@ pnpm typecheck
 pnpm lint
 pnpm test
 pnpm test:integration
+pnpm test:contract
 pnpm build
 pnpm start
 ```
 
-`test` 覆盖单元、SDK 兼容性与 Nuxt 组件，`test:integration` 使用 Nuxt Test Utils 验证真实 SSR/API（无需数据库或浏览器）。`test:db` 必须另行配置：在根目录 `.env` 中填写指向隔离测试数据库的 `TEST_DATABASE_URL`，再运行 `pnpm test:db`。缺少配置或连接失败均返回非零退出码，不静默跳过。构建和常规测试不需要真实 Provider 凭据。
+`test` 覆盖单元、SDK 兼容性与 Nuxt 组件，`test:integration` 使用 Nuxt Test Utils 验证真实 SSR/API（无需数据库或浏览器）。`test:contract` 运行 MF-03 的 Provider 契约自检（`mock/providers/check-contract.ts`，无需框架、网络或账号），验证三类端口的统一结果语义、能力不匹配样例与配置快照路由规则。`test:db` 必须另行配置：在根目录 `.env` 中填写指向隔离测试数据库的 `TEST_DATABASE_URL`，再运行 `pnpm test:db`。缺少配置或连接失败均返回非零退出码，不静默跳过。构建和常规测试不需要真实 Provider 凭据。
 
 首批无前置依赖的任务是 [MF-01 技术选择与公共约定](https://github.com/A-Words/museflow/issues/1)、[MF-02 页面原型](https://github.com/A-Words/museflow/issues/2)、[MF-03 Provider 契约与样例](https://github.com/A-Words/museflow/issues/3)，认领前查看对应 Issue 是否已有负责人。MF-01 完成后，由 MF-04 统一建立应用骨架、锁定依赖并补齐启动说明。具体供应商、成员材料和交付日期可随后补充。
 
