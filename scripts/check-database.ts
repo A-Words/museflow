@@ -1,4 +1,4 @@
-import { createDatabase } from '@museflow/database'
+import { createDatabase } from '../server/database/index.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url || !/^postgres(?:ql)?:\/\//.test(url)) {

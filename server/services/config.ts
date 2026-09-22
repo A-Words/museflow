@@ -11,7 +11,7 @@ export function parseServerConfig(input: unknown) {
   if (!result.success) {
     const names = { databaseUrl: 'NUXT_DATABASE_URL', storageRoot: 'NUXT_STORAGE_ROOT' }
     const invalid = [...new Set(result.error.issues.map(issue => names[issue.path[0] as keyof typeof names] ?? 'server config'))]
-    throw new Error(`Invalid configuration: ${invalid.join(', ')}. Copy apps/web/.env.example to .env; set a PostgreSQL URL and an absolute private storage path.`)
+    throw new Error(`Invalid configuration: ${invalid.join(', ')}. Copy .env.example to .env; set a PostgreSQL URL and an absolute private storage path.`)
   }
   return result.data
 }

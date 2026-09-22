@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { healthSchema } from '@museflow/contracts'
+import { healthSchema } from '../../shared/contracts/health.js'
 
 describe('public health contract', () => {
   it('accepts Web liveness and rejects false readiness claims', () => {

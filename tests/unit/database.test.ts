@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDatabase } from '@museflow/database'
+import { createDatabase } from '../../server/database/index.js'
 
 describe('database pool background errors', () => {
   afterEach(() => vi.restoreAllMocks())

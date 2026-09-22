@@ -2,11 +2,11 @@ import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { $fetch, setup } from '@nuxt/test-utils/e2e'
-import { healthSchema } from '@museflow/contracts'
+import { healthSchema } from '../../shared/contracts/health.js'
 
 describe('Nuxt SSR and Nitro HTTP', async () => {
   await setup({
-    rootDir: fileURLToPath(new URL('../../apps/web', import.meta.url)),
+    rootDir: fileURLToPath(new URL('../..', import.meta.url)),
     browser: false,
     nuxtConfig: {
       runtimeConfig: {

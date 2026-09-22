@@ -11,28 +11,25 @@ export const publicBoundaryRule = {
   meta: {
     type: 'problem',
     schema: [],
-    messages: { forbidden: 'Public code cannot import {{source}}. Keep server dependencies in server/ or the Worker; share public contracts via @museflow/contracts.' },
+    messages: { forbidden: 'Public code cannot import {{source}}. Keep server dependencies in server/; share public contracts via #shared.' },
   },
   create(context) {
     const filename = normalize(path.relative(root, context.filename))
-    const contracts = inside(filename, 'packages/contracts')
-    const shared = inside(filename, 'apps/web/shared')
-    const app = inside(filename, 'apps/web/app')
-    if (!contracts && !shared && !app) return {}
+    const shared = inside(filename, 'shared')
+    const app = inside(filename, 'app')
+    if (!shared && !app) return {}
 
     function allowed(source) {
       if (source === 'zod' || source.startsWith('zod/')) return true
-      if (!contracts && source === '@museflow/contracts') return true
       if (app && ['vue', 'vue-router', '@nuxt/ui', '@ai-sdk/vue', '#imports', '#components', '#app'].includes(source)) return true
       let target
       if (source.startsWith('.')) target = path.resolve(path.dirname(context.filename), source)
-      else if (/^(~\/|@\/)/.test(source)) target = path.resolve(root, 'apps/web/app', source.slice(2))
-      else if (/^(~~\/|@@\/)/.test(source)) target = path.resolve(root, 'apps/web', source.slice(3))
-      else if (source.startsWith('#shared/')) target = path.resolve(root, 'apps/web/shared', source.slice(8))
+      else if (/^(~\/|@\/)/.test(source)) target = path.resolve(root, 'app', source.slice(2))
+      else if (/^(~~\/|@@\/)/.test(source)) target = path.resolve(root, source.slice(3))
+      else if (source.startsWith('#shared/')) target = path.resolve(root, 'shared', source.slice(8))
       if (!target) return false
       const relative = normalize(path.relative(root, target))
-      if (contracts) return inside(relative, 'packages/contracts/src')
-      return inside(relative, 'apps/web/shared') || (app && inside(relative, 'apps/web/app'))
+      return inside(relative, 'shared') || (app && inside(relative, 'app'))
     }
 
     function check(node, source) {

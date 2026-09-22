@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { createAuthClient } from 'better-auth/vue'
-import { createDatabase } from '@museflow/database'
+import { createDatabase } from '../../server/database/index.js'
 
 describe('locked SDK compatibility (Mock, no real provider)', () => {
   it('streams a Mock model through the native UI protocol into the Vue client', async () => {

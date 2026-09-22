@@ -40,7 +40,7 @@
 | MF-01 | P0 准备 | 剩余技术选择与公共 API 约定 | 无 | [#1](https://github.com/A-Words/museflow/issues/1) |
 | MF-02 | P0 准备 | 核心页面与交互原型 | 无 | [#2](https://github.com/A-Words/museflow/issues/2) |
 | MF-03 | P0 准备 | 文本音乐语音 Provider 契约与切换样例 | 无 | [#3](https://github.com/A-Words/museflow/issues/3) |
-| MF-04 | P0 | Nuxt 与 Worker 项目骨架 | MF-01 | [#4](https://github.com/A-Words/museflow/issues/4) |
+| MF-04 | P0 | Nuxt 项目骨架 | MF-01 | [#4](https://github.com/A-Words/museflow/issues/4) |
 | MF-05 | P0 | 数据库基线与迁移约定 | MF-03、MF-04 | [#5](https://github.com/A-Words/museflow/issues/5) |
 | MF-06 | P0 | 注册登录与资源权限 | MF-02、MF-05 | [#6](https://github.com/A-Words/museflow/issues/6) |
 | MF-07 | P0 | 双积分报价账本与积分页面 | MF-02、MF-03、MF-05、MF-06 | [#7](https://github.com/A-Words/museflow/issues/7) |
@@ -97,13 +97,13 @@ MF-01、MF-02、MF-03 可由三人并行推进，认领前先确认 Issue 的当
 - [ ] 旧报价、在途任务和声音档案固定原供应商的规则明确，新默认配置只作用于新请求。
 - [ ] 提供两套可控配置和能力不匹配样例，明确哪些行为不能用通用重试处理。
 
-### MF-04 Nuxt 与 Worker 项目骨架
+### MF-04 Nuxt 项目骨架
 
-**目标与范围**：按已评审选型初始化 Nuxt、独立 Worker 和必要共享包，建立类型检查、构建和测试入口；提供样例配置及本地运行说明。此项负责共享基础配置，其他 Issue 不自行另建脚手架。
+**目标与范围**：按已评审选型初始化根目录 Nuxt，公共契约放 shared、数据库连接放 server/database，暂不引入独立 Worker，建立类型检查、构建和测试入口；提供样例配置及本地运行说明。此项负责共享基础配置，其他 Issue 不自行另建脚手架。
 
 **关联**：NFR-05，[架构布局](ARCHITECTURE.md#建议代码布局)。
 
-- [ ] Nuxt 页面/API 与 Worker 可按文档分别启动，配置缺失时报出可理解错误。
+- [ ] Nuxt 页面/API 可按根目录文档启动，配置缺失时报出可理解错误。
 - [ ] 类型检查和构建实际通过，测试入口可运行；锁文件与运行时要求入库。
 - [ ] 客户端不能导入服务端密钥/数据库模块；仓库不包含真实凭据或个人运行数据。
 
