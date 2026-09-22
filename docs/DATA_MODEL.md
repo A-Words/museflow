@@ -110,7 +110,7 @@ classDiagram
 | `tool_configs` | `tool_name`、`version`、`enabled`、`input_schema_version`、`capabilities`、`provider_kind`、`provider_ref?` | 版本唯一；provider_ref 可指定某个配置版本，无指定时读取对应 kind 的默认配置；报价保存最终选中的配置 |
 | `price_rules` | `tool_name`、`version`、`currency`、`specification`、`amount`、`active_from` | 规则版本不可覆盖；同一规格在有效时间只能选中一条 |
 | `quotes` | `owner_id`、`tool_call_id`、`input_hash`、`input_snapshot`、`provider_snapshot`、`capability_snapshot`、`price_version`、`currency`、`amount`、`expires_at` | 用户、参数及供应商配置版本绑定；一个报价最多对应一个任务；任务复制该快照 |
-| `generation_tasks` | `owner_id`、`conversation_id`、`tool_call_id`、`quote_id`、`tool_name`、`status`、`source_mode`、`input_snapshot`、`provider_snapshot`、`entitlement_snapshot`、`retry_of_task_id?`、`error_code?`、`lease_until?`、`lease_token`、`version` | `quote_id` 唯一；状态见创作与积分流程；任务不在 Provider 提交前凭空成功 |
+| `generation_tasks` | `owner_id`、`conversation_id`、`tool_call_id`、`quote_id`、`tool_name`、`status`、`source_mode`、`input_snapshot`、`provider_snapshot`、`entitlement_snapshot`、`retry_of_task_id?`、`error_code?`、`lease_until?`、`lease_token?`、`version` | `quote_id` 唯一；状态见创作与积分流程；任务不在 Provider 提交前凭空成功 |
 | `task_attempts` | `task_id`、`attempt_no`、`dispatch_phase`、`provider_request_key`、`provider_request_id?`、`provider_status`、`started_at`、`finished_at?` | `(task_id, attempt_no)` 唯一；保存可安全重试或只能核对的依据 |
 | `task_events` | `task_id`、`event_key`、`from_status`、`to_status`、`actor`、`evidence_ref?` | 事件 key 唯一；可审计状态历史；证据不含密钥 |
 | `assets` | `owner_id`、`task_id?`、`kind`、`title`、`storage_key?`、`text_content?`、`mime_type?`、`bytes?`、`duration_ms?`、`checksum?`、`tags`、`source_mode`、`parent_asset_id?`、`cover_asset_id?`、`status`、`deleted_at?` | kind 为 lyrics/audio/cover/voice_sample；文本与文件按类型验证；封面和父作品必须属于同一用户或已授权目录 |
@@ -139,7 +139,7 @@ classDiagram
 | --- | --- |
 | 作品库按用户与日期分页 | `assets(owner_id, created_at, id)`；为可用作品建立状态过滤索引 |
 | 会话消息顺序读取 | `messages(conversation_id, created_at, id)`，查询必须附归属校验 |
-| Worker 领取排队任务 | `generation_tasks(status, created_at, id)`，另索引 `lease_until` 供恢复扫描 |
+| 任务服务筛选待执行任务 | `generation_tasks(status, created_at, id)`，若采用租约，再增加 `lease_until` 索引用于恢复扫描 |
 | 钱包与流水 | 唯一 `(owner_id, currency)`，流水 `(account_id, created_at, id)` 和 `operation_key` 唯一 |
 | 幂等与重复结果 | quoteId、task reservation、Provider 事件 key 和产物输出槽位均唯一；一个 task 的同一槽位只能归档一次 |
 | 标签与检索 | 首轮定义标题/歌词的中文子串检索语义；数据量增大后评估索引，不默认英文全文检索满足中文要求 |
@@ -147,6 +147,8 @@ classDiagram
 任务还需保存产物的 `output_slot` 并在有 `task_id` 时建立唯一 `(task_id, output_slot)`；这比依赖文件名防重更可靠。所有外键的删除策略需在 DDL 中显式选择，不能级联删除账本或审计记录。
 
 物理设计完成门槛是：选定数据库与版本，补迁移 SQL、字段长度/空值/枚举约束、外键与索引、初始化数据，并对建库、升级及并发事务实测。当前这些可执行产物尚不存在。
+
+`lease_until` 与 `lease_token` 是采用租约调度时的候选字段，由 MF-08 明确需求后通过迁移引入，不作为 MF-05 必须提前实现的字段。任务持久化、版本控制、幂等与中断恢复要求不因暂不设独立 Worker 而取消。
 
 ## 生命周期与删除
 
