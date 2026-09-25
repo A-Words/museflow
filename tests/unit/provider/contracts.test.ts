@@ -197,6 +197,28 @@ describe('capability declarations', () => {
       }).success,
     ).toBe(true)
   })
+
+  it('refuses a declaration whose matching operation is missing, whatever the mode', () => {
+    // A query or cancel ability without the operation cannot serve the call it promises, even on
+    // a synchronous configuration.
+    const declaresQuery = {
+      ...base,
+      kind: 'music',
+      operations: ['submit'],
+      outputTypes: ['audio'],
+      supports: { ...base.supports, query: true },
+    }
+    expect(providerCapabilitiesSchema.safeParse(declaresQuery).success).toBe(false)
+    expect(
+      providerCapabilitiesSchema.safeParse({ ...declaresQuery, operations: ['submit', 'query'] }).success,
+    ).toBe(true)
+
+    const declaresCancel = { ...declaresQuery, supports: { ...base.supports, cancel: true } }
+    expect(providerCapabilitiesSchema.safeParse(declaresCancel).success).toBe(false)
+    expect(
+      providerCapabilitiesSchema.safeParse({ ...declaresCancel, operations: ['submit', 'cancel'] }).success,
+    ).toBe(true)
+  })
 })
 
 describe('configuration versions', () => {

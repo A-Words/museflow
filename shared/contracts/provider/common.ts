@@ -29,12 +29,19 @@ export const operationsByKind = {
   tts: speechOperationSchema.options,
 } as const
 
-// The operation that makes an asynchronous result recoverable. Only music and speech expose a
-// query operation; an accepted text request can only be completed through a callback.
+// The operation that makes an asynchronous result recoverable, and the operation behind the
+// cancel ability. Only music and speech expose them; an accepted text request can only be
+// completed through a callback.
 export const queryOperationByKind: Record<ProviderKind, string | undefined> = {
   text: undefined,
   music: 'query',
   tts: 'query',
+}
+
+export const cancelOperationByKind: Record<ProviderKind, string | undefined> = {
+  text: undefined,
+  music: 'cancel',
+  tts: 'cancel',
 }
 
 // Provider output only ever produces lyrics, audio or a voice sample. The assets dictionary
@@ -113,6 +120,21 @@ export const providerCapabilitiesSchema = z
           code: 'custom',
           path: ['operations'],
           message: `Operation "${operation}" does not belong to the ${value.kind} port`,
+        })
+      }
+    }
+    // A declared optional ability must also exist as an operation: a configuration that
+    // advertises query or cancel while omitting the matching operation cannot serve the call it
+    // promises, so it is refused here instead of failing when a caller acts on the declaration.
+    for (const [support, operation] of [
+      ['query', queryOperationByKind[value.kind]],
+      ['cancel', cancelOperationByKind[value.kind]],
+    ] as const) {
+      if (value.supports[support] && (operation === undefined || !value.operations.includes(operation))) {
+        context.addIssue({
+          code: 'custom',
+          path: ['supports', support],
+          message: `A configuration that declares "${support}" support must also declare the matching operation`,
         })
       }
     }

@@ -356,11 +356,20 @@ function resolvePublishedConfig(input: {
   if (input.expectedCapabilities) {
     const publishedCapabilities = providerCapabilitiesSchema.safeParse(found.capabilities)
     const storedCapabilities = providerCapabilitiesSchema.safeParse(input.expectedCapabilities)
-    if (
-      publishedCapabilities.success &&
-      storedCapabilities.success &&
-      JSON.stringify(publishedCapabilities.data) !== JSON.stringify(storedCapabilities.data)
-    ) {
+    // An unparsable side is refused instead of being treated as "not drifted": falling back to
+    // the stored snapshot would run the request against a version whose capabilities can no
+    // longer be read, which is exactly what this comparison exists to prevent.
+    if (!publishedCapabilities.success || !storedCapabilities.success) {
+      return {
+        ok: false,
+        error: providerError(
+          'PROVIDER_UNAVAILABLE',
+          'The stored or published capability snapshot no longer matches the contract; requote or reconcile',
+          { details: { providerKey: ref.providerKey, version: String(ref.version) } },
+        ),
+      }
+    }
+    if (JSON.stringify(publishedCapabilities.data) !== JSON.stringify(storedCapabilities.data)) {
       return {
         ok: false,
         error: providerError(

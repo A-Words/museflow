@@ -211,7 +211,21 @@ export function createMockMusicPort(
       const step = script.next('query')
       switch (step.outcome) {
         case 'completed': {
-          const recalled = issued.get(input.requestKey) ?? {}
+          const recalled = issued.get(input.requestKey)
+          if (!recalled) {
+            // This port only knows the requests it issued itself. Reporting a completion for
+            // anything else would invent a result and its parameters, so it stays unknown,
+            // exactly like the speech port.
+            return musicQueryResultSchema.parse(
+              unknownResult(
+                'query-unavailable',
+                'The mock port has no record of this request; the original result cannot be confirmed',
+                input.requestKey,
+                observedAt,
+                input.requestId,
+              ),
+            )
+          }
           return musicQueryResultSchema.parse(
             completed({
               requestKey: input.requestKey,
@@ -267,7 +281,20 @@ export function createMockMusicPort(
         case 'canceled':
           return musicCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
         case 'completed': {
-          const recalled = issued.get(input.requestKey) ?? {}
+          const recalled = issued.get(input.requestKey)
+          if (!recalled) {
+            // The cancellation cannot be confirmed for a request this port never issued, and the
+            // original request may still be running, so it stays unknown.
+            return musicCancelResultSchema.parse(
+              unknownResult(
+                'query-unavailable',
+                'The mock port has no record of this request; the cancellation cannot be confirmed',
+                input.requestKey,
+                observedAt,
+                input.requestId,
+              ),
+            )
+          }
           return musicCancelResultSchema.parse(
             completed({
               requestKey: input.requestKey,

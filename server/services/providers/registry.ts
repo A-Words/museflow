@@ -58,6 +58,12 @@ export function createMockProviderRegistry(options: MockProviderRegistryOptions)
   // One port instance per configuration version. A port keeps request state (for example the
   // voice metadata a speech request confirmed), so a task that re-resolves its snapshot must
   // receive the same instance instead of a fresh one that forgot the in-flight request.
+  //
+  // The map is deliberately never evicted: a port is bound to the requests it issued, and
+  // dropping it would turn their query or cancel into an unknown result. Published versions are
+  // finite (a change creates a new version), so the growth follows the number of versions a
+  // process has served; retiring old instances belongs to the task service lifecycle, which
+  // knows when no task can still reference a version.
   const ports = new Map<string, ProviderPort>()
 
   function scriptFor(adapterId: string): MockScript {

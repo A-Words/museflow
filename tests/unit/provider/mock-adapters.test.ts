@@ -305,6 +305,18 @@ describe('music mock samples', () => {
     if (cancel.outcome === 'rejected') expect(cancel.error.code).toBe('CANCEL_NOT_SUPPORTED')
   })
 
+  it('reports a request it never issued as unconfirmable instead of inventing a result', async () => {
+    const port = createMockMusicPort(
+      musicStudioConfig,
+      createMockScript({ now: clock, perOperation: { query: [{ outcome: 'completed' }] } }),
+    )
+    const query = await port.query({ requestKey: 'mock-music-request-unknown', requestId: 'mock-request-unknown' })
+    expect(query.outcome).toBe('unknown')
+    if (query.outcome !== 'unknown') return
+    expect(query.reason).toBe('query-unavailable')
+    expect(query.retryable).toBe(false)
+  })
+
   it('keeps the confirmed parameters when a cancel reports a completed request', async () => {
     const registry = registryWith({
       'mock-music-studio': {

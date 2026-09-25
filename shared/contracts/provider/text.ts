@@ -10,7 +10,8 @@ import {
 
 // Text port: agent planning, lyrics generation and structured extraction.
 // Modes: `generate` is sync, `stream` is stream. A text adapter may additionally answer
-// asynchronously (accepted), which the task service completes through query.
+// asynchronously (accepted), which the task service completes through a callback: the port
+// exposes no query operation, so an async text configuration must declare `callbacks`.
 // See docs/PROVIDER_CONTRACT.md for the mode matrix and capability requirements.
 
 export const textMessageRoleSchema = z.enum(['system', 'user', 'assistant'])

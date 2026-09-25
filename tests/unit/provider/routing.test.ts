@@ -226,6 +226,20 @@ describe('existing snapshots stay on their original configuration', () => {
     if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
   })
 
+  it('reports a snapshot whose published capabilities can no longer be read', () => {
+    // An unparsable side must not be treated as "not drifted": continuing would run the request
+    // against a version whose capabilities can no longer be compared.
+    const snapshot = snapshotProvider(textFlexConfig, providerFixtureCapturedAt)
+    const unreadable: ProviderConfig[] = providerConfigFixtures.map(config =>
+      config.providerConfigId === textFlexConfig.providerConfigId
+        ? { ...config, capabilities: { ...config.capabilities, modes: [] } }
+        : config,
+    )
+    const resolved = resolveSnapshotRoute({ snapshot, configs: unreadable })
+    expect(resolved.ok).toBe(false)
+    if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
+  })
+
   it('reports a snapshot whose requirement set is no longer supported', () => {
     const snapshot = snapshotProvider(textBasicConfig, providerFixtureCapturedAt)
     const resolved = resolveSnapshotRoute({
