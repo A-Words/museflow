@@ -39,6 +39,7 @@
 - 语音输入：`text`、`voiceRef`、`language`、`format`、`sampleRateHz`、`speed`。
 - 结果统一以 `outcome` 判别：`completed` / `accepted` / `canceled` / `rejected` / `unknown`。
 - 完成的音乐或语音结果必须含至少一个带受控 `downloadUrl` 的 `audio` 产物：只有 `kind: 'audio'` 而无法检索内容的产物不构成完成，不能据此归档或结算；语音结果另带 `voiceRef`、`voiceKind`、`language`、`format`，便于核对交付音频与已确认请求一致。
+- `query`/`cancel` 返回 `completed` 时沿用该请求提交时确认的参数（时长、格式、语言、音色）；适配器查不到自己发出过的请求时返回 `unknown`（`query-unavailable`），不得用占位值伪造完成结果。
 - 产物只描述引用（`kind`、`format`、`mimeType`、`byteSize`、`durationMs`、`checksumSha256`、受控 `downloadUrl` 及过期时间）。调用方必须重新校验主机、重定向、内容类型和大小后再下载，URL 本身不构成成功。
 - `requestKey` 是系统生成的稳定请求标识，用于厂商侧幂等与查询；`requestId` 由厂商返回。二者都不承载归属、积分或用户身份。
 
@@ -128,6 +129,6 @@ Mock 结果一律标记 `sourceMode: 'mock'`，产物地址使用保留域 `.inv
 
 ## 证据与限制
 
-- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、11 项能力不匹配样例、派生要求（输入长度、输出类型、音色种类，超长音乐输入在报价前拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口复用仍能查到已确认音色/未发出请求报 `unknown` 样例与 Mock 守卫。
+- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、11 项能力不匹配样例、派生要求（输入长度、输出类型、音色种类，超长音乐输入在报价前拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口复用仍能查到已确认音色/未发出请求报 `unknown`/查询与取消复现已确认参数样例与 Mock 守卫。
 - 未实现，也未由测试覆盖：真实适配器请求与响应、密钥读取与轮换、任务调度、查询次数上限与恢复流程、回调验签与去重、`task_events` 写入、报价/任务/计费/存储归档，以及 Nuxt API 暴露。
 - 因此当前只能声明“契约与 Mock 样例就绪”，不能声明 FR-11 或 T-26/T-27 已通过；真实能力与费用证据在接入真实适配器后另行记录，Mock 不混入真实成功率。

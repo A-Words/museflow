@@ -27,6 +27,9 @@ export function createMockMusicPort(
   config: ProviderConfig,
   script: MockScript = createMockScript(),
 ): MusicProviderPort {
+  // Parameters confirmed at submit time are recalled for query and cancel, so a delivered
+  // result keeps the values of the original request instead of falling back to defaults.
+  const issued = new Map<string, { durationSeconds?: number; format?: string; language?: string }>()
   const querySupported = config.capabilities.supports.query
   const cancelSupported = config.capabilities.supports.cancel
   const asyncSupported = config.capabilities.modes.includes('async')
@@ -133,6 +136,11 @@ export function createMockMusicPort(
       const step = script.next('submit')
       switch (step.outcome) {
         case 'completed':
+          issued.set(input.requestKey, {
+            durationSeconds: input.durationSeconds,
+            format: input.format,
+            language: input.language,
+          })
           return musicSubmitResultSchema.parse(
             completed({
               requestKey: input.requestKey,
@@ -157,6 +165,11 @@ export function createMockMusicPort(
               ),
             )
           }
+          issued.set(input.requestKey, {
+            durationSeconds: input.durationSeconds,
+            format: input.format,
+            language: input.language,
+          })
           return musicSubmitResultSchema.parse(accepted(input.requestKey, observedAt, `mock-request-${input.requestKey}`))
         case 'rejected':
           return musicSubmitResultSchema.parse(refused(providerError(step.code, step.message), input.requestKey, observedAt))
@@ -197,10 +210,19 @@ export function createMockMusicPort(
 
       const step = script.next('query')
       switch (step.outcome) {
-        case 'completed':
+        case 'completed': {
+          const recalled = issued.get(input.requestKey) ?? {}
           return musicQueryResultSchema.parse(
-            completed({ requestKey: input.requestKey, requestId: input.requestId, observedAt }),
+            completed({
+              requestKey: input.requestKey,
+              requestId: input.requestId,
+              observedAt,
+              durationSeconds: recalled.durationSeconds,
+              format: recalled.format,
+              language: recalled.language,
+            }),
           )
+        }
         case 'accepted':
           return musicQueryResultSchema.parse(accepted(input.requestKey, observedAt, input.requestId))
         case 'canceled':
@@ -244,10 +266,19 @@ export function createMockMusicPort(
       switch (step.outcome) {
         case 'canceled':
           return musicCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
-        case 'completed':
+        case 'completed': {
+          const recalled = issued.get(input.requestKey) ?? {}
           return musicCancelResultSchema.parse(
-            completed({ requestKey: input.requestKey, requestId: input.requestId, observedAt }),
+            completed({
+              requestKey: input.requestKey,
+              requestId: input.requestId,
+              observedAt,
+              durationSeconds: recalled.durationSeconds,
+              format: recalled.format,
+              language: recalled.language,
+            }),
           )
+        }
         case 'rejected':
           return musicCancelResultSchema.parse(
             refused(providerError(step.code, step.message), input.requestKey, observedAt, input.requestId),

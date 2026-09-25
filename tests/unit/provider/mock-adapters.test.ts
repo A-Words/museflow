@@ -264,6 +264,10 @@ describe('music mock samples', () => {
     if (query.outcome !== 'completed') return
     expect(query.artifacts[0]?.kind).toBe('audio')
     expect(query.sourceMode).toBe('mock')
+    // The parameters confirmed at submit time are recalled instead of falling back to defaults.
+    expect(query.durationMs).toBe(90_000)
+    expect(query.format).toBe('mp3')
+    expect(query.language).toBe('zh')
   })
 
   it('refuses query and cancel when the configuration does not declare them', async () => {
@@ -299,6 +303,38 @@ describe('music mock samples', () => {
     })
     expect(cancel.outcome).toBe('rejected')
     if (cancel.outcome === 'rejected') expect(cancel.error.code).toBe('CANCEL_NOT_SUPPORTED')
+  })
+
+  it('keeps the confirmed parameters when a cancel reports a completed request', async () => {
+    const registry = registryWith({
+      'mock-music-studio': {
+        now: clock,
+        perOperation: { submit: [{ outcome: 'accepted' }], cancel: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'music',
+      requirements: musicSubmitRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asMusicPort(registry.port(route.snapshot))
+
+    const submit = await port.submit(musicSubmitInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    // A cancel that finds the request already finished reports the confirmed parameters too.
+    const cancel = await port.cancel({
+      requestKey: musicSubmitInputFixture.requestKey,
+      requestId: submit.requestId,
+      reason: '用户请求取消',
+    })
+    expect(cancel.outcome).toBe('completed')
+    if (cancel.outcome !== 'completed') return
+    expect(cancel.durationMs).toBe(90_000)
+    expect(cancel.format).toBe('mp3')
+    expect(cancel.language).toBe('zh')
   })
 
   it('refuses an accepted submission on a synchronous-only configuration', async () => {
@@ -446,5 +482,25 @@ describe('mock adapter guards', () => {
     })
     const snapshot = snapshotProvider(musicStudioConfig, providerFixtureCapturedAt)
     expect(() => disabledRegistry.port(snapshot)).toThrow(/PROVIDER_UNAVAILABLE/)
+  })
+})
+
+describe('port instances', () => {
+  it('reuses one port per configuration version and never across versions', () => {
+    const nextVersion = { ...textFlexConfig, version: textFlexConfig.version + 1, modelId: 'mock-text-2' }
+    const registry = createMockProviderRegistry({
+      configs: [...providerConfigFixtures, nextVersion],
+      defaults: providerDefaultFixtures,
+      scripts: { 'mock-text-flex': { now: clock } },
+    })
+
+    const first = registry.port(snapshotProvider(textFlexConfig, providerFixtureCapturedAt))
+    const sameVersion = registry.port(snapshotProvider(textFlexConfig, providerFixtureCapturedAt))
+    const otherVersion = registry.port(snapshotProvider(nextVersion, providerFixtureCapturedAt))
+
+    // The same immutable version must return the instance that knows its in-flight requests.
+    expect(sameVersion).toBe(first)
+    expect(otherVersion).not.toBe(first)
+    expect(otherVersion.config.version).toBe(nextVersion.version)
   })
 })
