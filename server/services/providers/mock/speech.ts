@@ -240,23 +240,24 @@ export function createMockSpeechPort(
       }
 
       const step = script.next('query')
+      const recalled = issued.get(input.requestKey)
+      if (
+        (step.outcome === 'completed' || step.outcome === 'accepted' || step.outcome === 'canceled') &&
+        (!recalled || recalled.requestId !== input.requestId)
+      ) {
+        return speechQueryResultSchema.parse(
+          unknownResult(
+            'query-unavailable',
+            'The mock port cannot confirm this request id; the original status cannot be confirmed',
+            input.requestKey,
+            observedAt,
+            input.requestId,
+          ),
+        )
+      }
       switch (step.outcome) {
         case 'completed': {
-          const recalled = issued.get(input.requestKey)
-          if (!recalled || recalled.requestId !== input.requestId) {
-            // Reporting a placeholder voice here would claim a confirmation that never happened,
-            // and a different vendor id cannot address this request, so an unconfirmable request
-            // is reported as unknown instead.
-            return speechQueryResultSchema.parse(
-              unknownResult(
-                'query-unavailable',
-                'The mock port cannot confirm this request id; the original result cannot be confirmed',
-                input.requestKey,
-                observedAt,
-                input.requestId,
-              ),
-            )
-          }
+          if (!recalled) throw new Error('A completed query must have an issued request')
           return speechQueryResultSchema.parse(
             completed({
               requestKey: input.requestKey,

@@ -381,6 +381,20 @@ describe('music mock samples', () => {
     if (query.outcome === 'unknown') expect(query.reason).toBe('query-unavailable')
   })
 
+  it.each(['accepted', 'canceled'] as const)('does not report music %s for an unaddressed request', async outcome => {
+    const port = createMockMusicPort(
+      musicStudioConfig,
+      createMockScript({ now: clock, perOperation: { submit: [{ outcome: 'accepted' }], query: [{ outcome }, { outcome }] } }),
+    )
+    const submit = await port.submit(musicSubmitInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+    const wrong = await port.query({ requestKey: musicSubmitInputFixture.requestKey, requestId: 'other-vendor-id' })
+    expect(wrong).toMatchObject({ outcome: 'unknown', reason: 'query-unavailable' })
+    const right = await port.query({ requestKey: musicSubmitInputFixture.requestKey, requestId: submit.requestId })
+    expect(right.outcome).toBe(outcome)
+  })
+
   it('keeps the confirmed parameters when a cancel reports a completed request', async () => {
     const registry = registryWith({
       'mock-music-studio': {
@@ -581,6 +595,20 @@ describe('speech mock samples', () => {
     })
     expect(query.outcome).toBe('unknown')
     if (query.outcome === 'unknown') expect(query.reason).toBe('query-unavailable')
+  })
+
+  it.each(['accepted', 'canceled'] as const)('does not report speech %s for an unaddressed request', async outcome => {
+    const port = createMockSpeechPort(
+      ttsHdConfig,
+      createMockScript({ now: clock, perOperation: { synthesize: [{ outcome: 'accepted' }], query: [{ outcome }, { outcome }] } }),
+    )
+    const submit = await port.synthesize(speechSynthesizeInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+    const wrong = await port.query({ requestKey: speechSynthesizeInputFixture.requestKey, requestId: 'other-vendor-id' })
+    expect(wrong).toMatchObject({ outcome: 'unknown', reason: 'query-unavailable' })
+    const right = await port.query({ requestKey: speechSynthesizeInputFixture.requestKey, requestId: submit.requestId })
+    expect(right.outcome).toBe(outcome)
   })
 
   it('does not confirm speech cancellation with a mismatched request id', async () => {

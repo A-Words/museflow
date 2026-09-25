@@ -217,22 +217,24 @@ export function createMockMusicPort(
       }
 
       const step = script.next('query')
+      const recalled = issued.get(input.requestKey)
+      if (
+        (step.outcome === 'completed' || step.outcome === 'accepted' || step.outcome === 'canceled') &&
+        (!recalled || recalled.requestId !== input.requestId)
+      ) {
+        return musicQueryResultSchema.parse(
+          unknownResult(
+            'query-unavailable',
+            'The mock port cannot confirm this request id; the original status cannot be confirmed',
+            input.requestKey,
+            observedAt,
+            input.requestId,
+          ),
+        )
+      }
       switch (step.outcome) {
         case 'completed': {
-          const recalled = issued.get(input.requestKey)
-          if (!recalled || recalled.requestId !== input.requestId) {
-            // A request this port never accepted, or one addressed with a different vendor id,
-            // cannot be confirmed: answering with a completion would invent a result.
-            return musicQueryResultSchema.parse(
-              unknownResult(
-                'query-unavailable',
-                'The mock port cannot confirm this request id; the original result cannot be confirmed',
-                input.requestKey,
-                observedAt,
-                input.requestId,
-              ),
-            )
-          }
+          if (!recalled) throw new Error('A completed query must have an issued request')
           return musicQueryResultSchema.parse(
             completed({
               requestKey: input.requestKey,
