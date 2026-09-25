@@ -1,0 +1,385 @@
+import { z } from 'zod'
+
+// Internal port primitives shared by the text, music and speech providers.
+// Adapters validate every vendor response against these schemas; business modules
+// read the normalized result only, never a vendor payload. See docs/PROVIDER_CONTRACT.md.
+
+export const providerKindSchema = z.enum(['text', 'music', 'tts'])
+export type ProviderKind = z.infer<typeof providerKindSchema>
+
+// A mock adapter must never be reported as a real provider result.
+export const sourceModeSchema = z.enum(['real', 'mock'])
+export type SourceMode = z.infer<typeof sourceModeSchema>
+
+// sync: result returned by the call itself. stream: incremental events. async: accepted
+// request that is completed through query/callback.
+export const invocationModeSchema = z.enum(['sync', 'stream', 'async'])
+export type InvocationMode = z.infer<typeof invocationModeSchema>
+
+export const textOperationSchema = z.enum(['generate', 'stream'])
+export const musicOperationSchema = z.enum(['submit', 'query', 'cancel'])
+export const speechOperationSchema = z.enum(['synthesize', 'query', 'cancel'])
+export type TextOperation = z.infer<typeof textOperationSchema>
+export type MusicOperation = z.infer<typeof musicOperationSchema>
+export type SpeechOperation = z.infer<typeof speechOperationSchema>
+
+export const operationsByKind = {
+  text: textOperationSchema.options,
+  music: musicOperationSchema.options,
+  tts: speechOperationSchema.options,
+} as const
+
+// The operation that makes an asynchronous result recoverable, and the operation behind the
+// cancel ability. Only music and speech expose them; an accepted text request can only be
+// completed through a callback.
+export const queryOperationByKind: Record<ProviderKind, string | undefined> = {
+  text: undefined,
+  music: 'query',
+  tts: 'query',
+}
+
+export const cancelOperationByKind: Record<ProviderKind, string | undefined> = {
+  text: undefined,
+  music: 'cancel',
+  tts: 'cancel',
+}
+
+// Provider output only ever produces lyrics, audio or a voice sample. The assets dictionary
+// additionally defines `cover`, which comes from a user upload (POST /assets) instead of a
+// provider, so it is deliberately absent here.
+export const providerArtifactKindSchema = z.enum(['lyrics', 'audio', 'voice_sample'])
+export type ProviderArtifactKind = z.infer<typeof providerArtifactKindSchema>
+
+// Download URLs are controlled provider addresses. The caller must re-validate host,
+// redirects, content type and size before downloading; a URL alone is never success.
+export const providerArtifactSchema = z.strictObject({
+  kind: providerArtifactKindSchema,
+  mimeType: z.string().min(1).optional(),
+  format: z.string().min(1).optional(),
+  byteSize: z.number().int().positive().optional(),
+  durationMs: z.number().int().positive().optional(),
+  checksumSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  downloadUrl: z.url().optional(),
+  downloadUrlExpiresAt: z.iso.datetime().optional(),
+})
+export type ProviderArtifact = z.infer<typeof providerArtifactSchema>
+
+// A completion is only usable when the caller can actually retrieve the bytes: an audio
+// artifact without a controlled download URL would let a completion be reported while the
+// task has nothing to archive or deliver.
+export function hasRetrievableAudio(artifacts: readonly ProviderArtifact[]): boolean {
+  return artifacts.some(artifact => artifact.kind === 'audio' && artifact.downloadUrl !== undefined)
+}
+
+export const providerUsageSchema = z.strictObject({
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  characters: z.number().int().nonnegative().optional(),
+  audioMs: z.number().int().nonnegative().optional(),
+  estimatedCostMicros: z.number().int().nonnegative().optional(),
+})
+export type ProviderUsage = z.infer<typeof providerUsageSchema>
+
+// ---------------------------------------------------------------------------
+// Capability declaration
+// ---------------------------------------------------------------------------
+
+export const providerOutputTypeSchema = z.enum(['text', 'structured', 'tool-calls', 'audio', 'voice-sample'])
+export const providerVoiceKindSchema = z.enum(['preset', 'cloned'])
+
+export const providerCapabilitiesSchema = z
+  .strictObject({
+    kind: providerKindSchema,
+    operations: z.array(z.string().min(1)).min(1),
+    modes: z.array(invocationModeSchema).min(1),
+    outputTypes: z.array(providerOutputTypeSchema).min(1),
+    supports: z.strictObject({
+      query: z.boolean(),
+      cancel: z.boolean(),
+      // Stable request key deduplicates a re-submitted generation on the vendor side.
+      idempotentSubmit: z.boolean(),
+      callbacks: z.boolean(),
+      remoteDelete: z.boolean(),
+    }),
+    limits: z.strictObject({
+      maxInputCharacters: z.number().int().positive().optional(),
+      maxDurationSeconds: z.number().int().positive().optional(),
+      maxOutputBytes: z.number().int().positive().optional(),
+      audioFormats: z.array(z.string().min(1)).optional(),
+      languages: z.array(z.string().min(1)).optional(),
+      voiceKinds: z.array(providerVoiceKindSchema).optional(),
+      // Longest expected wait before a task may move to reconciling.
+      expectedCompletionSeconds: z.number().int().positive().optional(),
+    }),
+  })
+  .superRefine((value, context) => {
+    const allowed: readonly string[] = operationsByKind[value.kind]
+    for (const operation of value.operations) {
+      if (!allowed.includes(operation)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['operations'],
+          message: `Operation "${operation}" does not belong to the ${value.kind} port`,
+        })
+      }
+    }
+    // A declared optional ability must also exist as an operation: a configuration that
+    // advertises query or cancel while omitting the matching operation cannot serve the call it
+    // promises, so it is refused here instead of failing when a caller acts on the declaration.
+    for (const [support, operation] of [
+      ['query', queryOperationByKind[value.kind]],
+      ['cancel', cancelOperationByKind[value.kind]],
+    ] as const) {
+      if (value.supports[support] && (operation === undefined || !value.operations.includes(operation))) {
+        context.addIssue({
+          code: 'custom',
+          path: ['supports', support],
+          message: `A configuration that declares "${support}" support must also declare the matching operation`,
+        })
+      }
+    }
+    // An asynchronous port whose result can be neither queried nor delivered by callback could
+    // never be recovered, so it must not be published as a usable configuration. Advertising a
+    // query ability is not enough: the configuration must also declare the query operation that
+    // the caller would actually invoke. The text port has no query operation, so an accepted
+    // text request can only be completed through a callback.
+    if (value.modes.includes('async')) {
+      if (value.kind === 'text' && !value.modes.includes('sync')) {
+        context.addIssue({
+          code: 'custom',
+          path: ['modes'],
+          message: 'An asynchronous text configuration must also declare sync for generate',
+        })
+      }
+      const queryOperation = queryOperationByKind[value.kind]
+      const canQuery =
+        queryOperation !== undefined && value.supports.query && value.operations.includes(queryOperation)
+      if (!canQuery && !value.supports.callbacks) {
+        context.addIssue({
+          code: 'custom',
+          path: ['supports', 'query'],
+          message:
+            'An asynchronous port must declare callback support, or a query ability backed by a declared query operation',
+        })
+      }
+    }
+  })
+export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>
+
+// ---------------------------------------------------------------------------
+// Immutable configuration versions
+// ---------------------------------------------------------------------------
+
+// Mirrors provider_configs. A (providerKey, version) pair is immutable: publishing a
+// change creates a new version, and enabled/disabled is a separate audited change.
+export const providerConfigSchema = z
+  .strictObject({
+    providerConfigId: z.uuid(),
+    providerKey: z.string().min(1),
+    version: z.number().int().positive(),
+    kind: providerKindSchema,
+    adapterId: z.string().min(1),
+    modelId: z.string().min(1),
+    baseUrl: z.url().optional(),
+    // Internal lookup reference, also frozen in stored snapshots. The secret value itself
+    // lives in server configuration and never appears in snapshots, quotes, tasks or logs.
+    credentialRef: z.string().min(1),
+    capabilities: providerCapabilitiesSchema,
+    parameterMapping: z.record(z.string(), z.string()),
+    enabled: z.boolean(),
+    sourceMode: sourceModeSchema,
+  })
+  // A capability snapshot that declares another kind would otherwise be publishable under this
+  // kind and then refuse every request routed to it, so it is refused at publish time instead
+  // of failing later during routing.
+  .refine(value => value.capabilities.kind === value.kind, {
+    message: 'capabilities.kind must match the configuration kind',
+    path: ['capabilities', 'kind'],
+  })
+export type ProviderConfig = z.infer<typeof providerConfigSchema>
+
+export const providerConfigRefSchema = z.strictObject({
+  providerConfigId: z.uuid(),
+  providerKey: z.string().min(1),
+  version: z.number().int().positive(),
+  kind: providerKindSchema,
+  adapterId: z.string().min(1),
+  modelId: z.string().min(1),
+  baseUrl: z.url().optional(),
+  // This is a lookup reference, never the credential value.
+  credentialRef: z.string().min(1),
+  sourceMode: sourceModeSchema,
+})
+export type ProviderConfigRef = z.infer<typeof providerConfigRefSchema>
+
+// Written into a quote, copied into the task, and consulted by query/cancel/archive.
+// Later default switches never rewrite an existing snapshot.
+export const providerSnapshotSchema = z.strictObject({
+  config: providerConfigRefSchema,
+  capabilities: providerCapabilitiesSchema,
+  parameterMapping: z.record(z.string(), z.string()),
+  capturedAt: z.iso.datetime(),
+})
+export type ProviderSnapshot = z.infer<typeof providerSnapshotSchema>
+
+// provider_defaults: exactly one row per kind, used for new requests and new quotes only.
+export const providerDefaultSchema = z.strictObject({
+  kind: providerKindSchema,
+  providerConfigId: z.uuid(),
+  version: z.number().int().positive(),
+})
+export type ProviderDefault = z.infer<typeof providerDefaultSchema>
+
+// ---------------------------------------------------------------------------
+// Normalized errors and retry classification
+// ---------------------------------------------------------------------------
+
+export const providerErrorCodeSchema = z.enum([
+  'UNSUPPORTED_CAPABILITY',
+  'INVALID_INPUT',
+  'PROVIDER_UNAVAILABLE',
+  'AUTHENTICATION_FAILED',
+  'QUOTA_EXHAUSTED',
+  'RATE_LIMITED',
+  'CONCURRENCY_LIMIT',
+  'CONTENT_REJECTED',
+  'CANCEL_NOT_SUPPORTED',
+  'REQUEST_NOT_FOUND',
+  'RESULT_UNKNOWN',
+  'INTERNAL_ERROR',
+])
+export type ProviderErrorCode = z.infer<typeof providerErrorCodeSchema>
+
+// `message` is shown to operators, so it must stay free of credentials, stack traces and
+// other users' content. `retryable` means "may be attempted again after a new explicit
+// user confirmation", never "the caller may silently resend a charged generation".
+export const providerErrorSchema = z.strictObject({
+  code: providerErrorCodeSchema,
+  message: z.string().min(1),
+  retryable: z.boolean(),
+  requestId: z.string().min(1).optional(),
+  details: z.record(z.string(), z.string()).optional(),
+})
+export type ProviderError = z.infer<typeof providerErrorSchema>
+
+export const providerRequestKeySchema = z.string().min(1).max(200)
+
+const requestFields = {
+  requestKey: providerRequestKeySchema,
+  requestId: z.string().min(1).optional(),
+  sourceMode: sourceModeSchema,
+  observedAt: z.iso.datetime(),
+}
+
+// ---------------------------------------------------------------------------
+// Normalized outcomes
+// ---------------------------------------------------------------------------
+
+export const providerOutcomeSchema = z.enum(['completed', 'accepted', 'canceled', 'rejected', 'unknown'])
+export type ProviderOutcome = z.infer<typeof providerOutcomeSchema>
+
+// Confirmed external cancellation. A cancel request that the vendor refuses stays a
+// rejection (CANCEL_NOT_SUPPORTED) and the original request keeps running.
+export const providerCanceledSchema = z.strictObject({
+  outcome: z.literal('canceled'),
+  ...requestFields,
+})
+export type ProviderCanceled = z.infer<typeof providerCanceledSchema>
+
+export const providerAcceptedSchema = z.strictObject({
+  outcome: z.literal('accepted'),
+  requestKey: providerRequestKeySchema,
+  // An accepted asynchronous request must be addressable by the vendor request id.
+  requestId: z.string().min(1),
+  providerStatus: z.enum(['queued', 'running']).optional(),
+  estimatedSeconds: z.number().nonnegative().optional(),
+  sourceMode: sourceModeSchema,
+  observedAt: z.iso.datetime(),
+})
+export type ProviderAccepted = z.infer<typeof providerAcceptedSchema>
+
+export const providerRejectedSchema = z.strictObject({
+  outcome: z.literal('rejected'),
+  error: providerErrorSchema,
+  ...requestFields,
+})
+export type ProviderRejected = z.infer<typeof providerRejectedSchema>
+
+export const unknownReasonSchema = z.enum([
+  'response-lost',
+  'timeout-detached',
+  'unparsable-response',
+  'query-unavailable',
+])
+export type UnknownReason = z.infer<typeof unknownReasonSchema>
+
+// An uncertain external result is its own outcome. It is never reported as a failure and
+// never retried generically: `retryable` is pinned to false and the task moves to
+// reconciling until evidence arrives.
+export const providerUnknownSchema = z.strictObject({
+  outcome: z.literal('unknown'),
+  reason: unknownReasonSchema,
+  message: z.string().min(1),
+  retryable: z.literal(false),
+  ...requestFields,
+})
+export type ProviderUnknown = z.infer<typeof providerUnknownSchema>
+
+// ---------------------------------------------------------------------------
+// Normalized status events (query, cancel and provider callbacks all map here)
+// ---------------------------------------------------------------------------
+
+export const providerStatusSchema = z.enum([
+  'accepted',
+  'running',
+  'completed',
+  'failed',
+  'canceled',
+  'unknown',
+])
+
+// A tool proposal is not an execution result. It stays unrunnable until the business layer
+// stores and confirms it. It lives here because a completed asynchronous text result travels
+// through a callback event, which common.ts describes.
+export const textToolProposalSchema = z.strictObject({
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1),
+  input: z.json(),
+})
+export type TextToolProposal = z.infer<typeof textToolProposalSchema>
+
+// The payload of a completed asynchronous text request. Without it the callback would report
+// `completed` while carrying no text, structured value or tool proposal, and the caller could
+// never recover the result it paid for.
+export const providerTextCompletionSchema = z.strictObject({
+  text: z.string(),
+  structuredValue: z.json().optional(),
+  toolProposals: z.array(textToolProposalSchema),
+})
+export type ProviderTextCompletion = z.infer<typeof providerTextCompletionSchema>
+
+export const providerStatusEventSchema = z.strictObject({
+  // Deduplication key for repeated or out-of-order callbacks.
+  eventKey: z.string().min(1),
+  kind: providerKindSchema,
+  providerStatus: providerStatusSchema,
+  requestKey: providerRequestKeySchema,
+  requestId: z.string().min(1).optional(),
+  artifacts: z.array(providerArtifactSchema).optional(),
+  // The text port has no query operation, so a completed asynchronous text request is only
+  // recoverable through the callback that carries its result. Music and speech deliver
+  // artifacts instead and leave this field unset.
+  textResult: providerTextCompletionSchema.optional(),
+  error: providerErrorSchema.optional(),
+  occurredAt: z.iso.datetime(),
+  sourceMode: sourceModeSchema,
+}).superRefine((event, context) => {
+  if (event.providerStatus !== 'completed') return
+  if (event.kind === 'text' && event.textResult === undefined) {
+    context.addIssue({ code: 'custom', path: ['textResult'], message: 'A completed text callback must carry its result' })
+  }
+  if (event.kind !== 'text' && !hasRetrievableAudio(event.artifacts ?? [])) {
+    context.addIssue({ code: 'custom', path: ['artifacts'], message: 'A completed audio callback must carry retrievable audio' })
+  }
+})
+export type ProviderStatusEvent = z.infer<typeof providerStatusEventSchema>
