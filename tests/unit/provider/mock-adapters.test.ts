@@ -317,6 +317,34 @@ describe('music mock samples', () => {
     expect(query.retryable).toBe(false)
   })
 
+  it('does not confirm an accepted request through a mismatched request id', async () => {
+    const registry = registryWith({
+      'mock-music-studio': {
+        now: clock,
+        perOperation: { submit: [{ outcome: 'accepted' }], query: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'music',
+      requirements: musicSubmitRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asMusicPort(registry.port(route.snapshot))
+
+    const submit = await port.submit(musicSubmitInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    // Addressing the request with another vendor id must not hand back the accepted result.
+    const query = await port.query({
+      requestKey: musicSubmitInputFixture.requestKey,
+      requestId: 'mock-request-someone-else',
+    })
+    expect(query.outcome).toBe('unknown')
+    if (query.outcome === 'unknown') expect(query.reason).toBe('query-unavailable')
+  })
+
   it('keeps the confirmed parameters when a cancel reports a completed request', async () => {
     const registry = registryWith({
       'mock-music-studio': {
@@ -476,6 +504,33 @@ describe('speech mock samples', () => {
     if (query.outcome !== 'unknown') return
     expect(query.reason).toBe('query-unavailable')
     expect(query.retryable).toBe(false)
+  })
+
+  it('does not confirm an accepted request through a mismatched request id', async () => {
+    const registry = registryWith({
+      'mock-tts-hd': {
+        now: clock,
+        perOperation: { synthesize: [{ outcome: 'accepted' }], query: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'tts',
+      requirements: speechSynthesizeRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asSpeechPort(registry.port(route.snapshot))
+
+    const submit = await port.synthesize(speechSynthesizeInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    const query = await port.query({
+      requestKey: speechSynthesizeInputFixture.requestKey,
+      requestId: 'mock-request-someone-else',
+    })
+    expect(query.outcome).toBe('unknown')
+    if (query.outcome === 'unknown') expect(query.reason).toBe('query-unavailable')
   })
 })
 

@@ -27,10 +27,19 @@ export function createMockSpeechPort(
   script: MockScript = createMockScript(),
 ): SpeechProviderPort {
   // Voice metadata confirmed at submit time is recalled for query and cancel, so a delivered
-  // artifact can be checked against the confirmed request instead of a guessed voice.
+  // artifact can be checked against the confirmed request instead of a guessed voice. The vendor
+  // request id is recorded as well, so a query or cancel has to address the request with the id
+  // it was accepted with instead of any id that carries the same request key.
   const issued = new Map<
     string,
-    { voiceRef: string; voiceKind: 'preset' | 'cloned'; language: string; format?: string; characters: number }
+    {
+      requestId?: string
+      voiceRef: string
+      voiceKind: 'preset' | 'cloned'
+      language: string
+      format?: string
+      characters: number
+    }
   >()
   const querySupported = config.capabilities.supports.query
   const cancelSupported = config.capabilities.supports.cancel
@@ -167,7 +176,7 @@ export function createMockSpeechPort(
               characters: input.text.length,
             }),
           )
-        case 'accepted':
+        case 'accepted': {
           if (!asyncSupported) {
             return speechSynthesizeResultSchema.parse(
               refused(
@@ -180,16 +189,17 @@ export function createMockSpeechPort(
               ),
             )
           }
+          const requestId = `mock-request-${input.requestKey}`
           issued.set(input.requestKey, {
+            requestId,
             voiceRef: input.voiceRef,
             voiceKind,
             language: input.language,
             format: input.format,
             characters: input.text.length,
           })
-          return speechSynthesizeResultSchema.parse(
-            accepted(input.requestKey, observedAt, `mock-request-${input.requestKey}`),
-          )
+          return speechSynthesizeResultSchema.parse(accepted(input.requestKey, observedAt, requestId))
+        }
         case 'rejected':
           return speechSynthesizeResultSchema.parse(
             refused(providerError(step.code, step.message), input.requestKey, observedAt),
@@ -233,13 +243,14 @@ export function createMockSpeechPort(
       switch (step.outcome) {
         case 'completed': {
           const recalled = issued.get(input.requestKey)
-          if (!recalled) {
-            // Reporting a placeholder voice here would claim a confirmation that never
-            // happened, so an unknown request is reported as unconfirmable instead.
+          if (!recalled || recalled.requestId !== input.requestId) {
+            // Reporting a placeholder voice here would claim a confirmation that never happened,
+            // and a different vendor id cannot address this request, so an unconfirmable request
+            // is reported as unknown instead.
             return speechQueryResultSchema.parse(
               unknownResult(
                 'query-unavailable',
-                'The mock port has no record of this request; the original result cannot be confirmed',
+                'The mock port cannot confirm this request id; the original result cannot be confirmed',
                 input.requestKey,
                 observedAt,
                 input.requestId,
@@ -304,13 +315,14 @@ export function createMockSpeechPort(
           return speechCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
         case 'completed': {
           const recalled = issued.get(input.requestKey)
-          if (!recalled) {
-            // The cancellation cannot be confirmed for a request this port never issued, and
-            // the original request may still be running, so it stays unknown.
+          if (!recalled || recalled.requestId !== input.requestId) {
+            // The cancellation cannot be confirmed for a request this port never accepted or for
+            // a different vendor id, and the original request may still be running, so it stays
+            // unknown.
             return speechCancelResultSchema.parse(
               unknownResult(
                 'query-unavailable',
-                'The mock port has no record of this request; the cancellation cannot be confirmed',
+                'The mock port cannot confirm this request id; the cancellation cannot be confirmed',
                 input.requestKey,
                 observedAt,
                 input.requestId,

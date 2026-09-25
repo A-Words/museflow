@@ -28,8 +28,13 @@ export function createMockMusicPort(
   script: MockScript = createMockScript(),
 ): MusicProviderPort {
   // Parameters confirmed at submit time are recalled for query and cancel, so a delivered
-  // result keeps the values of the original request instead of falling back to defaults.
-  const issued = new Map<string, { durationSeconds?: number; format?: string; language?: string }>()
+  // result keeps the values of the original request instead of falling back to defaults. The
+  // vendor request id is recorded as well, so a query or cancel has to address the request with
+  // the id it was accepted with instead of any id that carries the same request key.
+  const issued = new Map<
+    string,
+    { requestId?: string; durationSeconds?: number; format?: string; language?: string }
+  >()
   const querySupported = config.capabilities.supports.query
   const cancelSupported = config.capabilities.supports.cancel
   const asyncSupported = config.capabilities.modes.includes('async')
@@ -150,7 +155,7 @@ export function createMockMusicPort(
               language: input.language,
             }),
           )
-        case 'accepted':
+        case 'accepted': {
           // A synchronous-only configuration cannot hand back an accepted request: nothing in
           // the contract would let the caller complete or query it.
           if (!asyncSupported) {
@@ -165,12 +170,15 @@ export function createMockMusicPort(
               ),
             )
           }
+          const requestId = `mock-request-${input.requestKey}`
           issued.set(input.requestKey, {
+            requestId,
             durationSeconds: input.durationSeconds,
             format: input.format,
             language: input.language,
           })
-          return musicSubmitResultSchema.parse(accepted(input.requestKey, observedAt, `mock-request-${input.requestKey}`))
+          return musicSubmitResultSchema.parse(accepted(input.requestKey, observedAt, requestId))
+        }
         case 'rejected':
           return musicSubmitResultSchema.parse(refused(providerError(step.code, step.message), input.requestKey, observedAt))
         case 'unknown':
@@ -212,14 +220,13 @@ export function createMockMusicPort(
       switch (step.outcome) {
         case 'completed': {
           const recalled = issued.get(input.requestKey)
-          if (!recalled) {
-            // This port only knows the requests it issued itself. Reporting a completion for
-            // anything else would invent a result and its parameters, so it stays unknown,
-            // exactly like the speech port.
+          if (!recalled || recalled.requestId !== input.requestId) {
+            // A request this port never accepted, or one addressed with a different vendor id,
+            // cannot be confirmed: answering with a completion would invent a result.
             return musicQueryResultSchema.parse(
               unknownResult(
                 'query-unavailable',
-                'The mock port has no record of this request; the original result cannot be confirmed',
+                'The mock port cannot confirm this request id; the original result cannot be confirmed',
                 input.requestKey,
                 observedAt,
                 input.requestId,
@@ -282,13 +289,14 @@ export function createMockMusicPort(
           return musicCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
         case 'completed': {
           const recalled = issued.get(input.requestKey)
-          if (!recalled) {
-            // The cancellation cannot be confirmed for a request this port never issued, and the
-            // original request may still be running, so it stays unknown.
+          if (!recalled || recalled.requestId !== input.requestId) {
+            // The cancellation cannot be confirmed for a request this port never accepted or for
+            // a different vendor id, and the original request may still be running, so it stays
+            // unknown.
             return musicCancelResultSchema.parse(
               unknownResult(
                 'query-unavailable',
-                'The mock port has no record of this request; the cancellation cannot be confirmed',
+                'The mock port cannot confirm this request id; the cancellation cannot be confirmed',
                 input.requestKey,
                 observedAt,
                 input.requestId,
