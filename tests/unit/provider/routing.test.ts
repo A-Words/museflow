@@ -306,8 +306,8 @@ describe('existing snapshots stay on their original configuration', () => {
   })
 
   it('keeps a cloned voice profile on its original provider configuration', () => {
-    // A voice profile stores the configuration id and version only, not a full snapshot, and
-    // it follows the same rule: the current default never moves it to another provider.
+    // A voice profile stores a configuration reference, not a full snapshot, and follows the
+    // same rule: the current default never moves it to another provider.
     const voiceProfileRef = snapshotProvider(musicStudioConfig, providerFixtureCapturedAt).config
     const resolved = resolveConfigReferenceRoute({ config: voiceProfileRef, configs: providerConfigFixtures })
     expect(resolved.ok && resolved.config.adapterId).toBe('mock-music-studio')
@@ -318,6 +318,19 @@ describe('existing snapshots stay on their original configuration', () => {
     const blocked = resolveConfigReferenceRoute({ config: voiceProfileRef, configs: disabled })
     expect(blocked.ok).toBe(false)
     if (!blocked.ok) expect(blocked.error.code).toBe('PROVIDER_UNAVAILABLE')
+  })
+
+  it('rejects a stored provider key that does not match the published configuration', () => {
+    const snapshot = snapshotProvider(musicStudioConfig, providerFixtureCapturedAt)
+    const wrongConfig = { ...snapshot.config, providerKey: 'another-music-provider' }
+    const wrongSnapshot = { ...snapshot, config: wrongConfig }
+    const snapshotRoute = resolveSnapshotRoute({ snapshot: wrongSnapshot, configs: providerConfigFixtures })
+    expect(snapshotRoute.ok).toBe(false)
+    if (!snapshotRoute.ok) expect(snapshotRoute.error.code).toBe('PROVIDER_UNAVAILABLE')
+
+    const referenceRoute = resolveConfigReferenceRoute({ config: wrongConfig, configs: providerConfigFixtures })
+    expect(referenceRoute.ok).toBe(false)
+    if (!referenceRoute.ok) expect(referenceRoute.error.code).toBe('PROVIDER_UNAVAILABLE')
   })
 })
 

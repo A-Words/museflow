@@ -328,7 +328,7 @@ function resolvePublishedConfig(input: {
 }): ConfigResolution {
   const ref = input.config
   const found = findConfig(input.configs, ref)
-  if (!found || found.kind !== ref.kind) {
+  if (!found || found.kind !== ref.kind || found.providerKey !== ref.providerKey) {
     return {
       ok: false,
       error: providerError(
