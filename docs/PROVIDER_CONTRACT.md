@@ -59,7 +59,7 @@
 ## 配置版本与快照
 
 - 配置最少包含 `providerConfigId`、`providerKey`、`version`、`kind`、`adapterId`、`modelId`、可选 `baseUrl`、`credentialRef`、`capabilities`、`parameterMapping`、`enabled`、`sourceMode`。
-- `(providerKey, version)` 不可覆盖：发布变更生成新版本（`publishProviderConfig`），启停是独立且可审计的变更。
+- `(providerKey, version)` 不可覆盖：发布变更生成新版本（`publishProviderConfig`），同一 `providerConfigId` 不得归属其他 `providerKey`；启停是独立且可审计的变更。
 - 新报价把当前默认配置冻结为 `providerSnapshot`（配置引用，含 `baseUrl` 与 `credentialRef` + 能力快照 + 参数映射 + 捕获时间）；创建任务时复制该快照。解析旧快照时核对这两项，拒绝同版本的目标地址或凭据引用漂移。
 - `credentialRef` 只是内部查找引用，不是密钥值；密钥值不进入快照、报价、任务、API 响应或日志。对外返回快照时应剔除内部凭据引用。
 - `provider_defaults` 每种 kind 至多一条，只被新请求与新报价读取。

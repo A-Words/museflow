@@ -256,6 +256,15 @@ describe('configuration versions', () => {
     expect(published.config.modelId).toBe('mock-text-2')
   })
 
+  it('refuses to reuse a configuration id for another provider key', () => {
+    const published = publishProviderConfig([textFlexConfig], {
+      ...textFlexConfig,
+      providerKey: 'another-text-provider',
+    })
+    expect(published.ok).toBe(false)
+    if (!published.ok) expect(published.error.code).toBe('INVALID_INPUT')
+  })
+
   it('refuses a configuration that does not satisfy the contract', () => {
     const published = publishProviderConfig([], {
       providerConfigId: textFlexConfig.providerConfigId,

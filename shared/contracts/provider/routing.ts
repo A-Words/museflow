@@ -202,6 +202,14 @@ export function publishProviderConfig(
   existing: readonly ProviderConfig[],
   input: Omit<ProviderConfig, 'version'>,
 ): PublishConfigResult {
+  if (existing.some(config =>
+    config.providerConfigId === input.providerConfigId && config.providerKey !== input.providerKey,
+  )) {
+    return {
+      ok: false,
+      error: providerError('INVALID_INPUT', 'Provider configuration id already belongs to another provider key'),
+    }
+  }
   const sameKey = existing.filter(config => config.providerKey === input.providerKey)
   const highest = sameKey.reduce((max, config) => Math.max(max, config.version), 0)
   const parsed = providerConfigSchema.safeParse({ ...input, version: highest + 1 })
