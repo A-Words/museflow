@@ -1,0 +1,368 @@
+import { describe, expect, it } from 'vitest'
+import type {
+  MusicProviderPort,
+  ProviderPort,
+  SpeechProviderPort,
+  TextProviderPort,
+} from '../../../shared/contracts/provider/ports.js'
+import { classifyProviderFailure, deriveTextRequirements, snapshotProvider } from '../../../shared/contracts/provider/routing.js'
+import {
+  musicLiteConfig,
+  musicStudioConfig,
+  musicSubmitInputFixture,
+  musicSubmitRequirements,
+  providerConfigFixtures,
+  providerDefaultFixtures,
+  providerFixtureCapturedAt,
+  speechSynthesizeInputFixture,
+  speechSynthesizeRequirements,
+  textBasicConfig,
+  textFlexConfig,
+  textGenerateInputFixture,
+  textStreamInputFixture,
+  ttsBasicConfig,
+} from '../../../shared/contracts/provider/fixtures.js'
+import { createMockProviderRegistry, type MockProviderRegistryOptions } from '../../../server/services/providers/registry.js'
+import { createMockMusicPort, createMockScript, createMockTextPort } from '../../../server/services/providers/mock/index.js'
+
+// Samples for the contract review: success, explicit failure and an unknown external result,
+// plus the two controlled configurations per kind. These tests prove the ports behave as the
+// contract states; they never stand in for a real provider verification (sourceMode: 'mock').
+
+const clock = () => providerFixtureCapturedAt
+
+function registryWith(scripts: MockProviderRegistryOptions['scripts']) {
+  return createMockProviderRegistry({ configs: providerConfigFixtures, defaults: providerDefaultFixtures, scripts })
+}
+
+function asTextPort(port: ProviderPort): TextProviderPort {
+  if (!('generate' in port)) throw new Error('expected a text port')
+  return port
+}
+
+function asMusicPort(port: ProviderPort): MusicProviderPort {
+  if (!('submit' in port)) throw new Error('expected a music port')
+  return port
+}
+
+function asSpeechPort(port: ProviderPort): SpeechProviderPort {
+  if (!('synthesize' in port)) throw new Error('expected a speech port')
+  return port
+}
+
+describe('text mock samples', () => {
+  it('returns a normalized completion and marks it as a mock', async () => {
+    const registry = registryWith({ 'mock-text-flex': { now: clock } })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: deriveTextRequirements(textGenerateInputFixture, 'generate'),
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const result = await asTextPort(registry.port(route.snapshot)).generate(textGenerateInputFixture)
+    expect(result.outcome).toBe('completed')
+    if (result.outcome !== 'completed') return
+    expect(result.text).toContain('mock')
+    expect(result.finishReason).toBe('stop')
+    expect(result.sourceMode).toBe('mock')
+  })
+
+  it('samples an explicit provider failure', async () => {
+    const registry = registryWith({
+      'mock-text-flex': {
+        now: clock,
+        perOperation: { generate: [{ outcome: 'rejected', code: 'CONTENT_REJECTED', message: 'mock content refusal' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: deriveTextRequirements(textGenerateInputFixture, 'generate'),
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const result = await asTextPort(registry.port(route.snapshot)).generate(textGenerateInputFixture)
+    expect(result.outcome).toBe('rejected')
+    if (result.outcome !== 'rejected') return
+    expect(result.error.code).toBe('CONTENT_REJECTED')
+    expect(result.error.retryable).toBe(false)
+    expect(classifyProviderFailure({ code: result.error.code, stage: 'submit' })).toBe('never')
+  })
+
+  it('samples an unknown external result that must be reconciled, not retried', async () => {
+    const registry = registryWith({
+      'mock-text-flex': {
+        now: clock,
+        perOperation: { generate: [{ outcome: 'unknown', reason: 'response-lost' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: deriveTextRequirements(textGenerateInputFixture, 'generate'),
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const result = await asTextPort(registry.port(route.snapshot)).generate(textGenerateInputFixture)
+    expect(result.outcome).toBe('unknown')
+    if (result.outcome !== 'unknown') return
+    expect(result.retryable).toBe(false)
+    expect(classifyProviderFailure({ code: 'RESULT_UNKNOWN', stage: 'submit' })).toBe('reconcile')
+  })
+
+  it('refuses a stream on a configuration without stream support', async () => {
+    const registry = registryWith({ 'mock-text-basic': { now: clock } })
+    registry.setDefault('text', { providerConfigId: textBasicConfig.providerConfigId, version: 1 })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: [{ operation: 'generate' }],
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const events = []
+    for await (const event of asTextPort(registry.port(route.snapshot)).stream(textStreamInputFixture)) {
+      events.push(event)
+    }
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'error', code: 'UNSUPPORTED_CAPABILITY' })
+  })
+
+  it('refuses an accepted request on a configuration without the async mode', async () => {
+    const registry = registryWith({
+      'mock-text-basic': { now: clock, perOperation: { generate: [{ outcome: 'accepted' }] } },
+    })
+    registry.setDefault('text', { providerConfigId: textBasicConfig.providerConfigId, version: 1 })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: [{ operation: 'generate' }],
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    // Accepting here would produce a request the caller could never query or complete.
+    const result = await asTextPort(registry.port(route.snapshot)).generate(textGenerateInputFixture)
+    expect(result.outcome).toBe('rejected')
+    if (result.outcome === 'rejected') expect(result.error.code).toBe('UNSUPPORTED_CAPABILITY')
+  })
+
+  it('streams a normalized event sequence on a configuration with stream support', async () => {
+    const registry = registryWith({ 'mock-text-flex': { now: clock } })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: deriveTextRequirements(textStreamInputFixture, 'stream'),
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const events = []
+    for await (const event of asTextPort(registry.port(route.snapshot)).stream(textStreamInputFixture)) {
+      events.push(event)
+    }
+    expect(events[0]).toMatchObject({ type: 'start', sequence: 0, sourceMode: 'mock' })
+    expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'stop' })
+    expect(events.filter(event => event.type === 'text-delta').length).toBeGreaterThan(0)
+  })
+})
+
+describe('switching configurations', () => {
+  it('switches the default text configuration without changing the caller', async () => {
+    const registry = registryWith({ 'mock-text-flex': { now: clock }, 'mock-text-basic': { now: clock } })
+    const requirements = deriveTextRequirements(textGenerateInputFixture, 'generate')
+
+    const before = registry.selectForNewRequest({ kind: 'text', requirements, now: providerFixtureCapturedAt })
+    registry.setDefault('text', { providerConfigId: textBasicConfig.providerConfigId, version: 1 })
+    const after = registry.selectForNewRequest({ kind: 'text', requirements, now: providerFixtureCapturedAt })
+    expect(before.ok && before.config.adapterId).toBe('mock-text-flex')
+    expect(after.ok && after.config.adapterId).toBe('mock-text-basic')
+
+    // The same business call site works with either configuration.
+    if (!after.ok) throw new Error(after.error.message)
+    const result = await asTextPort(registry.port(after.snapshot)).generate(textGenerateInputFixture)
+    expect(result.outcome).toBe('completed')
+  })
+
+  it('keeps an existing quote and task on the original configuration after a switch', () => {
+    const registry = registryWith({ 'mock-text-flex': { now: clock }, 'mock-text-basic': { now: clock } })
+    const quote = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: deriveTextRequirements(textGenerateInputFixture, 'generate'),
+      now: providerFixtureCapturedAt,
+    })
+    if (!quote.ok) throw new Error(quote.error.message)
+
+    registry.setDefault('text', { providerConfigId: textBasicConfig.providerConfigId, version: 1 })
+
+    const resolved = registry.resolveSnapshot({ snapshot: quote.snapshot })
+    expect(resolved.ok && resolved.config.adapterId).toBe('mock-text-flex')
+    expect(asTextPort(registry.port(quote.snapshot)).config.adapterId).toBe('mock-text-flex')
+  })
+})
+
+describe('music mock samples', () => {
+  it('completes an accepted asynchronous request through query', async () => {
+    const registry = registryWith({
+      'mock-music-studio': {
+        now: clock,
+        perOperation: { submit: [{ outcome: 'accepted' }], query: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'music',
+      requirements: musicSubmitRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asMusicPort(registry.port(route.snapshot))
+
+    const submit = await port.submit(musicSubmitInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    const query = await port.query({ requestKey: musicSubmitInputFixture.requestKey, requestId: submit.requestId })
+    expect(query.outcome).toBe('completed')
+    if (query.outcome !== 'completed') return
+    expect(query.artifacts[0]?.kind).toBe('audio')
+    expect(query.sourceMode).toBe('mock')
+  })
+
+  it('refuses query and cancel when the configuration does not declare them', async () => {
+    const registry = registryWith({
+      'mock-music-lite': { now: clock, perOperation: { submit: [{ outcome: 'accepted' }] } },
+    })
+    registry.setDefault('music', { providerConfigId: musicLiteConfig.providerConfigId, version: 1 })
+    const route = registry.selectForNewRequest({
+      kind: 'music',
+      requirements: [{ operation: 'submit', maxDurationSeconds: 20 }],
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asMusicPort(registry.port(route.snapshot))
+
+    const submit = await port.submit({
+      requestKey: 'mock-music-request-lite',
+      prompt: 'short loop',
+      instrumental: true,
+      durationSeconds: 20,
+    })
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    const query = await port.query({ requestKey: 'mock-music-request-lite', requestId: submit.requestId })
+    expect(query.outcome).toBe('rejected')
+    if (query.outcome === 'rejected') expect(query.error.code).toBe('UNSUPPORTED_CAPABILITY')
+
+    const cancel = await port.cancel({
+      requestKey: 'mock-music-request-lite',
+      requestId: submit.requestId,
+      reason: '用户请求取消',
+    })
+    expect(cancel.outcome).toBe('rejected')
+    if (cancel.outcome === 'rejected') expect(cancel.error.code).toBe('CANCEL_NOT_SUPPORTED')
+  })
+
+  it('refuses an accepted submission on a synchronous-only configuration', async () => {
+    const syncOnly = {
+      ...musicStudioConfig,
+      capabilities: {
+        ...musicStudioConfig.capabilities,
+        modes: ['sync' as const],
+        supports: { ...musicStudioConfig.capabilities.supports, query: false, callbacks: false },
+      },
+    }
+    const port = createMockMusicPort(
+      syncOnly,
+      createMockScript({ now: clock, perOperation: { submit: [{ outcome: 'accepted' }] } }),
+    )
+    const result = await port.submit(musicSubmitInputFixture)
+    expect(result.outcome).toBe('rejected')
+    if (result.outcome === 'rejected') expect(result.error.code).toBe('UNSUPPORTED_CAPABILITY')
+  })
+})
+
+describe('speech mock samples', () => {
+  it('returns audio with its voice and language metadata', async () => {
+    const registry = registryWith({ 'mock-tts-hd': { now: clock } })
+    const route = registry.selectForNewRequest({
+      kind: 'tts',
+      requirements: speechSynthesizeRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const result = await asSpeechPort(registry.port(route.snapshot)).synthesize(speechSynthesizeInputFixture)
+    expect(result.outcome).toBe('completed')
+    if (result.outcome !== 'completed') return
+    expect(result.voiceRef).toBe(speechSynthesizeInputFixture.voiceRef)
+    expect(result.voiceKind).toBe('preset')
+    expect(result.language).toBe(speechSynthesizeInputFixture.language)
+    expect(result.artifacts[0]?.kind).toBe('audio')
+  })
+
+  it('refuses a cloned voice on a configuration that only declares presets', async () => {
+    const registry = registryWith({ 'mock-tts-basic': { now: clock } })
+    registry.setDefault('tts', { providerConfigId: ttsBasicConfig.providerConfigId, version: 1 })
+    const route = registry.selectForNewRequest({
+      kind: 'tts',
+      requirements: [{ operation: 'synthesize' }],
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const result = await asSpeechPort(registry.port(route.snapshot)).synthesize({
+      requestKey: 'mock-tts-request-cloned',
+      text: '你好',
+      voiceRef: 'cloned:voice-01',
+      language: 'zh',
+    })
+    expect(result.outcome).toBe('rejected')
+    if (result.outcome === 'rejected') expect(result.error.code).toBe('UNSUPPORTED_CAPABILITY')
+  })
+
+  it('returns the confirmed voice metadata when an accepted request is queried', async () => {
+    const registry = registryWith({
+      'mock-tts-hd': {
+        now: clock,
+        perOperation: { synthesize: [{ outcome: 'accepted' }], query: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'tts',
+      requirements: speechSynthesizeRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+    const port = asSpeechPort(registry.port(route.snapshot))
+
+    const request = { ...speechSynthesizeInputFixture, voiceRef: 'cloned:voice-01' }
+    const submit = await port.synthesize(request)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+
+    const query = await port.query({ requestKey: request.requestKey, requestId: submit.requestId })
+    expect(query.outcome).toBe('completed')
+    if (query.outcome !== 'completed') return
+    // The delivered audio can be checked against the voice that was actually confirmed.
+    expect(query.voiceRef).toBe('cloned:voice-01')
+    expect(query.voiceKind).toBe('cloned')
+  })
+})
+
+describe('mock adapter guards', () => {
+  it('refuses to build a mock port from a configuration that is not a mock', () => {
+    expect(() => createMockTextPort({ ...textFlexConfig, sourceMode: 'real' })).toThrow(/mock configurations/)
+  })
+
+  it('refuses to resolve a port for a snapshot whose configuration was disabled', () => {
+    const disabledRegistry = createMockProviderRegistry({
+      configs: providerConfigFixtures.map(config =>
+        config.providerConfigId === musicStudioConfig.providerConfigId ? { ...config, enabled: false } : config,
+      ),
+      defaults: providerDefaultFixtures,
+      scripts: { 'mock-music-studio': { now: clock } },
+    })
+    const snapshot = snapshotProvider(musicStudioConfig, providerFixtureCapturedAt)
+    expect(() => disabledRegistry.port(snapshot)).toThrow(/PROVIDER_UNAVAILABLE/)
+  })
+})
