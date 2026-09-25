@@ -351,6 +351,7 @@ export type ProviderTextCompletion = z.infer<typeof providerTextCompletionSchema
 export const providerStatusEventSchema = z.strictObject({
   // Deduplication key for repeated or out-of-order callbacks.
   eventKey: z.string().min(1),
+  kind: providerKindSchema,
   providerStatus: providerStatusSchema,
   requestKey: providerRequestKeySchema,
   requestId: z.string().min(1).optional(),
@@ -362,5 +363,13 @@ export const providerStatusEventSchema = z.strictObject({
   error: providerErrorSchema.optional(),
   occurredAt: z.iso.datetime(),
   sourceMode: sourceModeSchema,
+}).superRefine((event, context) => {
+  if (event.providerStatus !== 'completed') return
+  if (event.kind === 'text' && event.textResult === undefined) {
+    context.addIssue({ code: 'custom', path: ['textResult'], message: 'A completed text callback must carry its result' })
+  }
+  if (event.kind !== 'text' && !hasRetrievableAudio(event.artifacts ?? [])) {
+    context.addIssue({ code: 'custom', path: ['artifacts'], message: 'A completed audio callback must carry retrievable audio' })
+  }
 })
 export type ProviderStatusEvent = z.infer<typeof providerStatusEventSchema>

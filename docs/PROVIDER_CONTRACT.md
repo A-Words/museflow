@@ -39,7 +39,8 @@
 - 语音输入：`text`、`voiceRef`、`language`、`format`、`sampleRateHz`、`speed`。
 - 结果统一以 `outcome` 判别：`completed` / `accepted` / `canceled` / `rejected` / `unknown`。
 - 完成的音乐或语音结果必须含至少一个带受控 `downloadUrl` 的 `audio` 产物：只有 `kind: 'audio'` 而无法检索内容的产物不构成完成，不能据此归档或结算；语音结果另带 `voiceRef`、`voiceKind`、`language`、`format`，便于核对交付音频与已确认请求一致。
-- `query`/`cancel` 必须用该请求被接受时返回的厂商 `requestId` 寻址：返回 `completed` 时沿用提交时确认的参数（时长、格式、语言、音色），并核对 `requestId` 与已接受请求一致；查不到记录或 `requestId` 不匹配时返回 `unknown`（`query-unavailable`），不得用占位值或改写后的参数伪造完成结果。
+- `query`/`cancel` 必须用该请求被接受时返回的厂商 `requestId` 寻址：返回 `completed` 时沿用提交时确认的参数（时长、格式、语言、音色），返回 `canceled` 时也须核对 `requestId` 与已接受请求一致；查不到记录或 `requestId` 不匹配时返回 `unknown`（`query-unavailable`），不得伪造完成或取消确认。
+- 回调事件携带 `kind`；`completed` 的 text 回调必须有 `textResult`，music/TTS 回调必须有可下载的 audio 产物。非完成状态不要求结果载荷。
 - 产物只描述引用（`kind`、`format`、`mimeType`、`byteSize`、`durationMs`、`checksumSha256`、受控 `downloadUrl` 及过期时间）。调用方必须重新校验主机、重定向、内容类型和大小后再下载，URL 本身不构成成功。
 - `requestKey` 是系统生成的稳定请求标识，用于厂商侧幂等与查询；`requestId` 由厂商返回。二者都不承载归属、积分或用户身份。
 

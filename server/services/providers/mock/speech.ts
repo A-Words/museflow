@@ -311,8 +311,15 @@ export function createMockSpeechPort(
 
       const step = script.next('cancel')
       switch (step.outcome) {
-        case 'canceled':
+        case 'canceled': {
+          const recalled = issued.get(input.requestKey)
+          if (!recalled || recalled.requestId !== input.requestId) {
+            return speechCancelResultSchema.parse(
+              unknownResult('query-unavailable', 'The mock port cannot confirm this request id; the cancellation cannot be confirmed', input.requestKey, observedAt, input.requestId),
+            )
+          }
           return speechCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
+        }
         case 'completed': {
           const recalled = issued.get(input.requestKey)
           if (!recalled || recalled.requestId !== input.requestId) {

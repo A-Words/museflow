@@ -270,7 +270,8 @@ describe('normalized status events', () => {
   it('carries a deduplication key for repeated or out-of-order callbacks', () => {
     const event = {
       eventKey: 'vendor-event-1',
-      providerStatus: 'completed',
+      kind: 'music',
+      providerStatus: 'running',
       requestKey: 'mock-music-request-0001',
       requestId: 'vendor-1',
       occurredAt: providerFixtureCapturedAt,
@@ -280,11 +281,28 @@ describe('normalized status events', () => {
     expect(providerStatusEventSchema.safeParse({ ...event, eventKey: undefined }).success).toBe(false)
   })
 
+  it('requires the matching result for a completed callback', () => {
+    const base = {
+      eventKey: 'vendor-event-2',
+      providerStatus: 'completed',
+      requestKey: 'mock-music-request-0001',
+      occurredAt: providerFixtureCapturedAt,
+      sourceMode: 'mock',
+    }
+    expect(providerStatusEventSchema.safeParse({ ...base, kind: 'text' }).success).toBe(false)
+    expect(providerStatusEventSchema.safeParse({ ...base, kind: 'music' }).success).toBe(false)
+    expect(providerStatusEventSchema.safeParse({ ...base, kind: 'tts', artifacts: [{ kind: 'audio' }] }).success).toBe(false)
+    for (const kind of ['music', 'tts']) {
+      expect(providerStatusEventSchema.safeParse({ ...base, kind, artifacts: [{ kind: 'audio', downloadUrl: 'https://example.com/result.mp3' }] }).success).toBe(true)
+    }
+  })
+
   it('carries a completed text result through the callback that delivers it', () => {
     // The text port has no query operation, so this payload is the only way an asynchronous text
     // request can recover the result it was accepted for.
     const event = {
       eventKey: 'vendor-text-event-1',
+      kind: 'text',
       providerStatus: 'completed',
       requestKey: 'mock-text-request-0001',
       requestId: 'vendor-text-1',

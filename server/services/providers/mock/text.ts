@@ -186,6 +186,15 @@ export function createMockTextPort(config: ProviderConfig, script: MockScript = 
         })
         return
       }
+      if (step.outcome !== 'completed') {
+        yield textStreamEventSchema.parse({
+          type: 'error',
+          sequence: 1,
+          code: 'INTERNAL_ERROR',
+          message: `A stream cannot finish with ${step.outcome}`,
+        })
+        return
+      }
       yield textStreamEventSchema.parse({
         type: 'start',
         sequence: 0,

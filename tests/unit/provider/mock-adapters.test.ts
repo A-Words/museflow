@@ -172,6 +172,13 @@ describe('text mock samples', () => {
     expect(events.filter(event => event.type === 'text-delta').length).toBeGreaterThan(0)
   })
 
+  it.each(['accepted', 'canceled'] as const)('does not turn a %s script step into a successful stream', async outcome => {
+    const port = createMockTextPort(textFlexConfig, createMockScript({ now: clock, perOperation: { stream: [{ outcome }] } }))
+    const events = []
+    for await (const event of port.stream(textStreamInputFixture)) events.push(event)
+    expect(events).toMatchObject([{ type: 'error', code: 'INTERNAL_ERROR' }])
+  })
+
   it('refuses a stream whose output type the configuration does not declare', async () => {
     // stream must validate the same derived requirements as generate: a configuration that
     // has the stream mode but not the requested output type cannot return a successful stream.
@@ -406,6 +413,20 @@ describe('music mock samples', () => {
     expect(cancel.language).toBe('zh')
   })
 
+  it('does not confirm cancellation with a mismatched request id', async () => {
+    const port = createMockMusicPort(
+      musicStudioConfig,
+      createMockScript({ now: clock, perOperation: { submit: [{ outcome: 'accepted' }], cancel: [{ outcome: 'canceled' }, { outcome: 'canceled' }] } }),
+    )
+    const submit = await port.submit(musicSubmitInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+    const wrong = await port.cancel({ requestKey: musicSubmitInputFixture.requestKey, requestId: 'other-vendor-id', reason: '用户请求取消' })
+    expect(wrong).toMatchObject({ outcome: 'unknown', reason: 'query-unavailable' })
+    const right = await port.cancel({ requestKey: musicSubmitInputFixture.requestKey, requestId: submit.requestId, reason: '用户请求取消' })
+    expect(right.outcome).toBe('canceled')
+  })
+
   it('refuses an accepted submission on a synchronous-only configuration', async () => {
     const syncOnly = {
       ...musicStudioConfig,
@@ -560,6 +581,20 @@ describe('speech mock samples', () => {
     })
     expect(query.outcome).toBe('unknown')
     if (query.outcome === 'unknown') expect(query.reason).toBe('query-unavailable')
+  })
+
+  it('does not confirm speech cancellation with a mismatched request id', async () => {
+    const port = createMockSpeechPort(
+      ttsHdConfig,
+      createMockScript({ now: clock, perOperation: { synthesize: [{ outcome: 'accepted' }], cancel: [{ outcome: 'canceled' }, { outcome: 'canceled' }] } }),
+    )
+    const submit = await port.synthesize(speechSynthesizeInputFixture)
+    expect(submit.outcome).toBe('accepted')
+    if (submit.outcome !== 'accepted') return
+    const wrong = await port.cancel({ requestKey: speechSynthesizeInputFixture.requestKey, requestId: 'other-vendor-id', reason: '用户请求取消' })
+    expect(wrong).toMatchObject({ outcome: 'unknown', reason: 'query-unavailable' })
+    const right = await port.cancel({ requestKey: speechSynthesizeInputFixture.requestKey, requestId: submit.requestId, reason: '用户请求取消' })
+    expect(right.outcome).toBe('canceled')
   })
 })
 
