@@ -142,8 +142,14 @@ export function deriveTextRequirements(input: TextGenerateInput, operation: Text
   const requirements: CapabilityRequirement[] = [
     { operation, mode: operation === 'stream' ? 'stream' : 'sync' },
   ]
-  if (input.responseFormat === 'json') requirements.push({ operation, outputType: 'structured' })
-  if (input.responseFormat === 'tool-calls') requirements.push({ operation, outputType: 'tool-calls' })
+  // The response format decides the required output type. Plain text is derived too, so a
+  // configuration that only declares structured or tool-call output cannot serve a text request.
+  const outputType = input.responseFormat === 'json'
+    ? 'structured'
+    : input.responseFormat === 'tool-calls'
+      ? 'tool-calls'
+      : 'text'
+  requirements.push({ operation, outputType })
   const characters = input.messages.reduce((total, message) => total + message.content.length, 0)
   requirements.push({ operation, maxInputCharacters: Math.max(characters, 1) })
   return requirements
@@ -330,7 +336,14 @@ function resolvePublishedConfig(input: {
       }),
     }
   }
-  if (found.adapterId !== ref.adapterId || found.modelId !== ref.modelId) {
+  // The stored reference also freezes the source mode: a row that turned from real into mock
+  // (or the other way) would otherwise be served by a mock port for work confirmed against a
+  // real provider, and its output could then be presented as a real result.
+  if (
+    found.adapterId !== ref.adapterId ||
+    found.modelId !== ref.modelId ||
+    found.sourceMode !== ref.sourceMode
+  ) {
     return {
       ok: false,
       error: providerError('PROVIDER_UNAVAILABLE', 'The published configuration no longer matches the stored reference', {

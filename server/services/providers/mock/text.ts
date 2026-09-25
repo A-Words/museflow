@@ -193,6 +193,30 @@ export function createMockTextPort(config: ProviderConfig, script: MockScript = 
         modelId: config.modelId,
         sourceMode: config.sourceMode,
       })
+      if (input.responseFormat === 'tool-calls') {
+        // A tool-call request must stream tool-call deltas: emitting text would hand the caller a
+        // response shape it never asked for and would never exercise the advertised contract.
+        const toolCallId = `${input.requestKey}-call-1`
+        const toolName = input.toolNames?.[0] ?? mockTextToolName
+        const argumentsJson = JSON.stringify({ theme: promptOf(input) })
+        for (let offset = 0; offset < argumentsJson.length; offset += 16) {
+          sequence += 1
+          yield textStreamEventSchema.parse({
+            type: 'tool-call-delta',
+            sequence,
+            toolCallId,
+            ...(offset === 0 ? { toolName } : {}),
+            argumentsDelta: argumentsJson.slice(offset, offset + 16),
+          })
+        }
+        yield textStreamEventSchema.parse({
+          type: 'finish',
+          sequence: sequence + 1,
+          finishReason: 'tool-calls',
+          usage: { outputTokens: 24 },
+        })
+        return
+      }
       for (const delta of [`[mock ${config.modelId}] `, promptOf(input)]) {
         sequence += 1
         yield textStreamEventSchema.parse({ type: 'text-delta', sequence, delta })

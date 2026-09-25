@@ -328,6 +328,26 @@ export const providerStatusSchema = z.enum([
   'unknown',
 ])
 
+// A tool proposal is not an execution result. It stays unrunnable until the business layer
+// stores and confirms it. It lives here because a completed asynchronous text result travels
+// through a callback event, which common.ts describes.
+export const textToolProposalSchema = z.strictObject({
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1),
+  input: z.json(),
+})
+export type TextToolProposal = z.infer<typeof textToolProposalSchema>
+
+// The payload of a completed asynchronous text request. Without it the callback would report
+// `completed` while carrying no text, structured value or tool proposal, and the caller could
+// never recover the result it paid for.
+export const providerTextCompletionSchema = z.strictObject({
+  text: z.string(),
+  structuredValue: z.json().optional(),
+  toolProposals: z.array(textToolProposalSchema),
+})
+export type ProviderTextCompletion = z.infer<typeof providerTextCompletionSchema>
+
 export const providerStatusEventSchema = z.strictObject({
   // Deduplication key for repeated or out-of-order callbacks.
   eventKey: z.string().min(1),
@@ -335,6 +355,10 @@ export const providerStatusEventSchema = z.strictObject({
   requestKey: providerRequestKeySchema,
   requestId: z.string().min(1).optional(),
   artifacts: z.array(providerArtifactSchema).optional(),
+  // The text port has no query operation, so a completed asynchronous text request is only
+  // recoverable through the callback that carries its result. Music and speech deliver
+  // artifacts instead and leave this field unset.
+  textResult: providerTextCompletionSchema.optional(),
   error: providerErrorSchema.optional(),
   occurredAt: z.iso.datetime(),
   sourceMode: sourceModeSchema,

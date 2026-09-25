@@ -203,6 +203,35 @@ describe('text mock samples', () => {
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ type: 'error', code: 'UNSUPPORTED_CAPABILITY' })
   })
+
+  it('streams tool-call deltas for a tool-call request instead of text', async () => {
+    const registry = registryWith({ 'mock-text-flex': { now: clock } })
+    const route = registry.selectForNewRequest({
+      kind: 'text',
+      requirements: [{ operation: 'stream', outputType: 'tool-calls' }],
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const events = []
+    for await (const event of asTextPort(registry.port(route.snapshot)).stream({
+      ...textStreamInputFixture,
+      responseFormat: 'tool-calls',
+      toolNames: ['lyrics.generate'],
+    })) {
+      events.push(event)
+    }
+
+    // A caller that asked for tool calls must never observe a text answer.
+    expect(events.some(event => event.type === 'text-delta')).toBe(false)
+    const deltas = events.filter(event => event.type === 'tool-call-delta')
+    expect(deltas.length).toBeGreaterThan(0)
+    expect(deltas[0]).toMatchObject({ toolName: 'lyrics.generate' })
+    const argumentsJson = deltas.map(event => (event.type === 'tool-call-delta' ? event.argumentsDelta : '')).join('')
+    expect(argumentsJson).toContain('帮我规划一次创作步骤')
+    expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'tool-calls' })
+    expect(events.map(event => event.sequence)).toEqual(events.map((_, index) => index))
+  })
 })
 
 describe('switching configurations', () => {

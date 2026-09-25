@@ -6,6 +6,7 @@ import {
   providerUnknownSchema,
   providerUsageSchema,
   sourceModeSchema,
+  textToolProposalSchema,
 } from './common.js'
 
 // Text port: agent planning, lyrics generation and structured extraction.
@@ -57,13 +58,6 @@ export type TextFinishReason = z.infer<typeof textFinishReasonSchema>
 
 // A tool proposal is not an execution result. It stays unrunnable until the business
 // layer stores and confirms it.
-export const textToolProposalSchema = z.strictObject({
-  toolCallId: z.string().min(1),
-  toolName: z.string().min(1),
-  input: z.json(),
-})
-export type TextToolProposal = z.infer<typeof textToolProposalSchema>
-
 export const textCompletedSchema = z.strictObject({
   outcome: z.literal('completed'),
   requestKey: providerRequestKeySchema,

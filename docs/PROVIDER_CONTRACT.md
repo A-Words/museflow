@@ -15,8 +15,8 @@
 
 | 端口 | 操作 | 模式 | 规范化结果 |
 | --- | --- | --- | --- |
-| Text | `generate` | `sync`；适配器可另行声明 `async` | `completed`（文本、结构化值或工具提议）、`accepted`、`rejected`、`unknown` |
-| Text | `stream` | `stream` | `start` → `text-delta`/`tool-call-delta` → `finish`，或单条脱敏 `error` |
+| Text | `generate` | `sync`；适配器可另行声明 `async` | `completed`（文本、结构化值或工具提议）、`accepted`、`rejected`、`unknown`；异步结果只能由完成回调携带 `textResult` 交付 |
+| Text | `stream` | `stream` | `start` →（`text-delta` 或 `tool-call-delta`，按请求的 `responseFormat`）→ `finish`，或单条脱敏 `error` |
 | Music | `submit` | 本项目音乐提交按 `async` 设计 | `completed` + 音频产物，或 `accepted` + 请求标识 |
 | Music | `query`、`cancel` | 按能力开放 | `completed`、`accepted`、`canceled`、`rejected`、`unknown` |
 | Speech | `synthesize` | `sync` 或 `async` | `completed` + 音频（含音色/语言/格式），或 `accepted` |
@@ -26,7 +26,7 @@
 
 - `accepted` 只表示外部已受理，携带厂商 `requestId`，不代表成功，不能据此归档或结算。
 - `accepted` 只在该配置声明 `async` 时返回；同步配置收到异步结果时返回 `UNSUPPORTED_CAPABILITY`，避免产生调用方永远无法查询或完成的状态。
-- 流式增量不构成可执行输入；未完成的 `tool-call-delta` 不能触发任何业务动作。流式事件首个为 `start`（`requestKey`、`modelId`、`sourceMode`），其后为 `text-delta`/`tool-call-delta` 与 `finish`；唯一例外是根本无法启动的流——不支持流式的适配器，或配置无法满足的请求，只产出单条 `error`（端口允许的错误码，能力不匹配时为 `UNSUPPORTED_CAPABILITY`），既没有前置 `start`，也不伪造增量。
+- 流式增量不构成可执行输入；未完成的 `tool-call-delta` 不能触发任何业务动作。流式事件首个为 `start`（`requestKey`、`modelId`、`sourceMode`），其后为 `text-delta`/`tool-call-delta` 与 `finish`；事件类型由请求决定——`responseFormat: 'tool-calls'` 只产出 `tool-call-delta`（首条带 `toolName`，`finish.finishReason` 为 `tool-calls`），其余请求产出 `text-delta`（`finish.finishReason` 为 `stop`），两者不混发，调用方不会收到与请求格式不符的流。唯一例外是根本无法启动的流——不支持流式的适配器，或配置无法满足的请求，只产出单条 `error`（端口允许的错误码，能力不匹配时为 `UNSUPPORTED_CAPABILITY`），既没有前置 `start`，也不伪造增量。
 - 流式 `error` 事件只使用端口允许的子集（`UNSUPPORTED_CAPABILITY`、`PROVIDER_UNAVAILABLE`、`RATE_LIMITED`、`CONTENT_REJECTED`、`RESULT_UNKNOWN`、`INTERNAL_ERROR`）。适配器不得把厂商原始错误体或子集外的错误码透出，无法归类时统一为 `INTERNAL_ERROR`。
 - 网络不确定单独表达为 `unknown`（`retryable` 固定为 `false`），不混同为 `rejected`。
 - 每个适配器必须实现端口全部方法；不支持时返回明确拒绝，而不是静默降级。
@@ -49,8 +49,8 @@
 
 - 校验在调用与报价之前执行，不满足即返回 `UNSUPPORTED_CAPABILITY`，不做静默降级或截断。
 - 未声明的限制视为不满足，适配器必须显式声明它保证的范围。
-- 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。音乐提交与语音合成都要求 `outputType: 'audio'`，与"完成结果必须含音频"一致；因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，预设音色的翻唱不会被只支持预置音色的配置误拒。
-- 声明为 `async` 的适配器必须可恢复：或声明 `callbacks`，或同时声明 `query` 能力与 `operations` 中该 kind 的查询操作，否则 schema 直接拒绝该配置。只声明 `supports.query` 而不声明 `query` 操作不算恢复路径，调用方无法据其恢复请求；Text 端口没有 `query` 操作，因此 `async` 的 text 配置只能靠 `callbacks`。
+- 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。音乐提交与语音合成都要求 `outputType: 'audio'`，与"完成结果必须含音频"一致；文本请求按 `responseFormat` 映射输出类型（`text`/`structured`/`tool-calls`），因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，只声明结构化输出的配置不能服务纯文本请求，预设音色的翻唱也不会被只支持预置音色的配置误拒。
+- 声明为 `async` 的适配器必须可恢复：或声明 `callbacks`，或同时声明 `query` 能力与 `operations` 中该 kind 的查询操作，否则 schema 直接拒绝该配置。只声明 `supports.query` 而不声明 `query` 操作不算恢复路径，调用方无法据其恢复请求；Text 端口没有 `query` 操作，因此 `async` 的 text 配置只能靠 `callbacks`，且完成回调必须携带 `textResult`（`text` + 可选 `structuredValue` + `toolProposals`，见 `providerTextCompletionSchema`），否则 `completed` 回调无法交付文本结果。
 - `operations` 必须属于该 kind 的端口操作（例如 music 不能声明 `synthesize`）。
 - 声明的可选能力必须有对应操作：`supports.query` 要求 `operations` 含该 kind 的查询操作，`supports.cancel` 要求含取消操作，否则该配置在声明层承诺了无法执行的调用，schema 直接拒绝；Text 端口没有这两个操作，因此不能声明它们。
 - 配置的 `kind` 必须与 `capabilities.kind` 一致，否则发布时即被拒绝，而不是等到路由时才失败。
@@ -73,6 +73,7 @@
 | 原配置被禁用或版本不可读 | 返回 `PROVIDER_UNAVAILABLE`，要求重新报价确认或进入核对 |
 | 发布版本能力与快照不一致 | 返回 `UNSUPPORTED_CAPABILITY`，不按新能力继续执行 |
 | 发布版本参数映射与快照不一致 | 返回 `PROVIDER_UNAVAILABLE`：旧报价与在途任务不得用改写后的映射执行 |
+| 发布版本 `sourceMode` 与快照不一致 | 返回 `PROVIDER_UNAVAILABLE`：已按真实供应商确认的工作不得改由 Mock 适配器执行 |
 | 正在进行的文本流 | 保留原请求连接，下一轮才读取新默认配置 |
 
 切换默认不改变历史快照，也不把原供应商的请求标识发送给新供应商；本项目不提供自动跨供应商重试或路由优化。
@@ -130,7 +131,7 @@ Mock 结果一律标记 `sourceMode: 'mock'`，产物地址使用保留域 `.inv
 
 ## 证据与限制
 
-- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、能力声明与操作的对应关系（`supports.query`/`supports.cancel` 必须有对应操作）、异步配置的恢复路径校验（`async` 需 `callbacks`，或同时声明 `query` 能力与该 kind 的查询操作；text 只能靠 `callbacks`）、11 项能力不匹配样例、派生要求（输入长度、`outputType: 'audio'`、音色种类，超长音乐输入与仅声明文本输出的配置都在报价或校验阶段被拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移、能力快照不可解析与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口按配置版本复用仍能查到已确认音色/音乐与语音对未发出请求或 `requestId` 不匹配的查询都报 `unknown` 而非伪造完成/查询与取消复现已确认参数样例与 Mock 守卫。
+- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致、回调可携带 `textResult` 且必须含 `toolProposals`）、能力声明与操作的对应关系（`supports.query`/`supports.cancel` 必须有对应操作）、异步配置的恢复路径校验（`async` 需 `callbacks`，或同时声明 `query` 能力与该 kind 的查询操作；text 只能靠 `callbacks`）、11 项能力不匹配样例、派生要求（文本按 `responseFormat` 要求 `text`/`structured`/`tool-calls` 输出、音乐与语音要求 `outputType: 'audio'`、输入长度与音色种类，超长音乐输入与只声明结构化输出或只声明文本输出的配置都在报价或校验阶段被拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移、能力快照不可解析、参数映射漂移与 `sourceMode` 漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/tool-calls 流只产出 `tool-call-delta`/同步配置拒绝 `accepted`/端口按配置版本复用仍能查到已确认音色/音乐与语音对未发出请求或 `requestId` 不匹配的查询都报 `unknown` 而非伪造完成/查询与取消复现已确认参数样例与 Mock 守卫。
 - 未实现，也未由测试覆盖：真实适配器请求与响应、密钥读取与轮换、任务调度、查询次数上限与恢复流程、回调验签与去重、`task_events` 写入、报价/任务/计费/存储归档，以及 Nuxt API 暴露。
 - 已知缺口（本轮评审确认，留给后续 Issue）：`voice_sample` 产物与 `voice-sample` 输出类型目前没有任何端口产出，只有 P1 声音克隆接入后才会使用；`deriveMusicRequirements` 只统计 `prompt` 与内联 `lyrics` 的字符数，引用归档歌词（`lyricsAssetId`）时长度不参与能力校验；`sampleRateHz`、`maxOutputTokens` 等输入参数尚未建模为能力限制；注册表按配置版本缓存的端口实例不做淘汰，回收由任务服务在确认无任务引用该版本后处理。
 - 因此当前只能声明“契约与 Mock 样例就绪”，不能声明 FR-11 或 T-26/T-27 已通过；真实能力与费用证据在接入真实适配器后另行记录，Mock 不混入真实成功率。

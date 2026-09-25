@@ -279,4 +279,28 @@ describe('normalized status events', () => {
     expect(providerStatusEventSchema.safeParse(event).success).toBe(true)
     expect(providerStatusEventSchema.safeParse({ ...event, eventKey: undefined }).success).toBe(false)
   })
+
+  it('carries a completed text result through the callback that delivers it', () => {
+    // The text port has no query operation, so this payload is the only way an asynchronous text
+    // request can recover the result it was accepted for.
+    const event = {
+      eventKey: 'vendor-text-event-1',
+      providerStatus: 'completed',
+      requestKey: 'mock-text-request-0001',
+      requestId: 'vendor-text-1',
+      textResult: {
+        text: '夏夜的风吹过街角',
+        structuredValue: { title: 'mock 歌词草稿' },
+        toolProposals: [{ toolCallId: 'call-1', toolName: 'lyrics.generate', input: { theme: '夏夜' } }],
+      },
+      occurredAt: providerFixtureCapturedAt,
+      sourceMode: 'mock',
+    }
+    expect(providerStatusEventSchema.safeParse(event).success).toBe(true)
+    // A text completion without its proposals is not a usable payload.
+    const withoutProposals = Object.fromEntries(
+      Object.entries(event.textResult).filter(([key]) => key !== 'toolProposals'),
+    )
+    expect(providerStatusEventSchema.safeParse({ ...event, textResult: withoutProposals }).success).toBe(false)
+  })
 })

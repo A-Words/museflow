@@ -4,6 +4,7 @@ import {
   classifyProviderFailure,
   deriveMusicRequirements,
   deriveSpeechRequirements,
+  deriveTextRequirements,
   resolveConfigReferenceRoute,
   resolveSnapshotRoute,
   selectProviderForNewRequest,
@@ -23,6 +24,8 @@ import {
   speechSynthesizeRequirements,
   textBasicConfig,
   textFlexConfig,
+  textGenerateInputFixture,
+  textStructuredInputFixture,
   textStructuredRequirements,
   ttsHdConfig,
 } from '../../../shared/contracts/provider/fixtures.js'
@@ -104,6 +107,27 @@ describe('derived requirements', () => {
       capabilities: { ...ttsHdConfig.capabilities, outputTypes: ['text'] },
     }
     expect(checkAllCapabilities(textOnlySpeech.capabilities, speechSynthesizeRequirements).ok).toBe(false)
+  })
+
+  it('requires text output for a plain-text request', () => {
+    // Plain text is an output type like any other: a configuration that only declares structured
+    // or tool-call output must not be selected for a text request.
+    expect(deriveTextRequirements(textGenerateInputFixture, 'generate')).toContainEqual({
+      operation: 'generate',
+      outputType: 'text',
+    })
+    expect(deriveTextRequirements(textStructuredInputFixture, 'generate')).toContainEqual({
+      operation: 'generate',
+      outputType: 'structured',
+    })
+
+    const structuredOnly: ProviderConfig = {
+      ...textFlexConfig,
+      capabilities: { ...textFlexConfig.capabilities, outputTypes: ['structured', 'tool-calls'] },
+    }
+    expect(
+      checkAllCapabilities(structuredOnly.capabilities, deriveTextRequirements(textGenerateInputFixture, 'generate')).ok,
+    ).toBe(false)
   })
 
   it('refuses an over-long music prompt at quote time instead of inside a charged task', () => {
@@ -222,6 +246,19 @@ describe('existing snapshots stay on their original configuration', () => {
         : config,
     )
     const resolved = resolveSnapshotRoute({ snapshot, configs: drifted })
+    expect(resolved.ok).toBe(false)
+    if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
+  })
+
+  it('reports a published version whose source mode drifted from the snapshot', () => {
+    // A row turned from real into mock would otherwise be served by a mock port for work that was
+    // confirmed against a real provider.
+    const realConfig: ProviderConfig = { ...textFlexConfig, sourceMode: 'real' }
+    const snapshot = snapshotProvider(realConfig, providerFixtureCapturedAt)
+    const turnedMock = providerConfigFixtures.map(config =>
+      config.providerConfigId === textFlexConfig.providerConfigId ? { ...config, sourceMode: 'mock' as const } : config,
+    )
+    const resolved = resolveSnapshotRoute({ snapshot, configs: turnedMock })
     expect(resolved.ok).toBe(false)
     if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
   })
