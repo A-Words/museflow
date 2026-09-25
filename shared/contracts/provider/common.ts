@@ -144,6 +144,13 @@ export const providerCapabilitiesSchema = z
     // the caller would actually invoke. The text port has no query operation, so an accepted
     // text request can only be completed through a callback.
     if (value.modes.includes('async')) {
+      if (value.kind === 'text' && !value.modes.includes('sync')) {
+        context.addIssue({
+          code: 'custom',
+          path: ['modes'],
+          message: 'An asynchronous text configuration must also declare sync for generate',
+        })
+      }
       const queryOperation = queryOperationByKind[value.kind]
       const canQuery =
         queryOperation !== undefined && value.supports.query && value.operations.includes(queryOperation)
@@ -174,8 +181,8 @@ export const providerConfigSchema = z
     adapterId: z.string().min(1),
     modelId: z.string().min(1),
     baseUrl: z.url().optional(),
-    // Reference only. The secret itself lives in server configuration and never appears
-    // in snapshots, quotes, tasks, API responses or logs.
+    // Internal lookup reference, also frozen in stored snapshots. The secret value itself
+    // lives in server configuration and never appears in snapshots, quotes, tasks or logs.
     credentialRef: z.string().min(1),
     capabilities: providerCapabilitiesSchema,
     parameterMapping: z.record(z.string(), z.string()),
@@ -198,6 +205,9 @@ export const providerConfigRefSchema = z.strictObject({
   kind: providerKindSchema,
   adapterId: z.string().min(1),
   modelId: z.string().min(1),
+  baseUrl: z.url().optional(),
+  // This is a lookup reference, never the credential value.
+  credentialRef: z.string().min(1),
   sourceMode: sourceModeSchema,
 })
 export type ProviderConfigRef = z.infer<typeof providerConfigRefSchema>

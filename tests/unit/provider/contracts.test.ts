@@ -175,6 +175,13 @@ describe('capability declarations', () => {
         ...asynchronous,
         supports: { ...base.supports, callbacks: true },
       }).success,
+    ).toBe(false)
+    expect(
+      providerCapabilitiesSchema.safeParse({
+        ...asynchronous,
+        modes: ['sync', 'async'],
+        supports: { ...base.supports, callbacks: true },
+      }).success,
     ).toBe(true)
   })
 

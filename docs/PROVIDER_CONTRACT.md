@@ -51,7 +51,7 @@
 - 校验在调用与报价之前执行，不满足即返回 `UNSUPPORTED_CAPABILITY`，不做静默降级或截断。
 - 未声明的限制视为不满足，适配器必须显式声明它保证的范围。
 - 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。音乐提交与语音合成都要求 `outputType: 'audio'`，与"完成结果必须含音频"一致；文本请求按 `responseFormat` 映射输出类型（`text`/`structured`/`tool-calls`），因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，只声明结构化输出的配置不能服务纯文本请求，预设音色的翻唱也不会被只支持预置音色的配置误拒。
-- 声明为 `async` 的适配器必须可恢复：或声明 `callbacks`，或同时声明 `query` 能力与 `operations` 中该 kind 的查询操作，否则 schema 直接拒绝该配置。只声明 `supports.query` 而不声明 `query` 操作不算恢复路径，调用方无法据其恢复请求；Text 端口没有 `query` 操作，因此 `async` 的 text 配置只能靠 `callbacks`，且完成回调必须携带 `textResult`（`text` + 可选 `structuredValue` + `toolProposals`，见 `providerTextCompletionSchema`），否则 `completed` 回调无法交付文本结果。
+- 声明为 `async` 的适配器必须可恢复：或声明 `callbacks`，或同时声明 `query` 能力与 `operations` 中该 kind 的查询操作，否则 schema 直接拒绝该配置。只声明 `supports.query` 而不声明 `query` 操作不算恢复路径，调用方无法据其恢复请求；Text `generate` 要求 `sync`，因此声明 `async` 的 text 配置还必须声明 `sync`，并支持 `callbacks`。完成回调必须携带 `textResult`（`text` + 可选 `structuredValue` + `toolProposals`，见 `providerTextCompletionSchema`）。
 - `operations` 必须属于该 kind 的端口操作（例如 music 不能声明 `synthesize`）。
 - 声明的可选能力必须有对应操作：`supports.query` 要求 `operations` 含该 kind 的查询操作，`supports.cancel` 要求含取消操作，否则该配置在声明层承诺了无法执行的调用，schema 直接拒绝；Text 端口没有这两个操作，因此不能声明它们。
 - 配置的 `kind` 必须与 `capabilities.kind` 一致，否则发布时即被拒绝，而不是等到路由时才失败。
@@ -60,8 +60,8 @@
 
 - 配置最少包含 `providerConfigId`、`providerKey`、`version`、`kind`、`adapterId`、`modelId`、可选 `baseUrl`、`credentialRef`、`capabilities`、`parameterMapping`、`enabled`、`sourceMode`。
 - `(providerKey, version)` 不可覆盖：发布变更生成新版本（`publishProviderConfig`），启停是独立且可审计的变更。
-- 新报价把当前默认配置冻结为 `providerSnapshot`（配置引用 + 能力快照 + 参数映射 + 捕获时间）；创建任务时复制该快照。
-- `credentialRef` 只是引用，密钥不进入快照、报价、任务、API 响应或日志。
+- 新报价把当前默认配置冻结为 `providerSnapshot`（配置引用，含 `baseUrl` 与 `credentialRef` + 能力快照 + 参数映射 + 捕获时间）；创建任务时复制该快照。解析旧快照时核对这两项，拒绝同版本的目标地址或凭据引用漂移。
+- `credentialRef` 只是内部查找引用，不是密钥值；密钥值不进入快照、报价、任务、API 响应或日志。对外返回快照时应剔除内部凭据引用。
 - `provider_defaults` 每种 kind 至多一条，只被新请求与新报价读取。
 
 ## 固定原供应商的规则
@@ -70,7 +70,7 @@
 | --- | --- |
 | 新需求/新报价 | 读取该 kind 当前默认 → 校验能力 → 写快照（`selectProviderForNewRequest`） |
 | 旧报价、在途任务及其查询/取消/归档 | 只用已保存快照解析（`resolveSnapshotRoute`）；该函数不接收默认配置，结构上无法切换到新供应商 |
-| 克隆声音档案 | 只保存配置 id 与版本，用 `resolveConfigReferenceRoute` 按同一规则解析；切换默认不会迁移已建音色 |
+| 克隆声音档案 | 保存内部配置引用，用 `resolveConfigReferenceRoute` 按同一规则解析；切换默认不会迁移已建音色 |
 | 原配置被禁用或版本不可读 | 返回 `PROVIDER_UNAVAILABLE`，要求重新报价确认或进入核对 |
 | 发布版本能力与快照不一致 | 返回 `UNSUPPORTED_CAPABILITY`，不按新能力继续执行 |
 | 发布版本参数映射与快照不一致 | 返回 `PROVIDER_UNAVAILABLE`：旧报价与在途任务不得用改写后的映射执行 |

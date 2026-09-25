@@ -229,6 +229,8 @@ export function snapshotProvider(config: ProviderConfig, capturedAt: string): Pr
       kind: config.kind,
       adapterId: config.adapterId,
       modelId: config.modelId,
+      ...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),
+      credentialRef: config.credentialRef,
       sourceMode: config.sourceMode,
     },
     capabilities: config.capabilities,
@@ -342,6 +344,8 @@ function resolvePublishedConfig(input: {
   if (
     found.adapterId !== ref.adapterId ||
     found.modelId !== ref.modelId ||
+    found.baseUrl !== ref.baseUrl ||
+    found.credentialRef !== ref.credentialRef ||
     found.sourceMode !== ref.sourceMode
   ) {
     return {

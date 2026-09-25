@@ -250,6 +250,23 @@ describe('existing snapshots stay on their original configuration', () => {
     if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
   })
 
+  it.each([
+    ['baseUrl', { baseUrl: 'https://other.example.com/provider' }],
+    ['credentialRef', { credentialRef: 'env:OTHER_PROVIDER_KEY' }],
+  ] as const)('rejects a published version with a changed %s', (_field, change) => {
+    const snapshot = snapshotProvider(textFlexConfig, providerFixtureCapturedAt)
+    const drifted = providerConfigFixtures.map(config =>
+      config.providerConfigId === textFlexConfig.providerConfigId ? { ...config, ...change } : config,
+    )
+    const resolved = resolveSnapshotRoute({ snapshot, configs: drifted })
+    expect(resolved.ok).toBe(false)
+    if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
+
+    const reference = resolveConfigReferenceRoute({ config: snapshot.config, configs: drifted })
+    expect(reference.ok).toBe(false)
+    if (!reference.ok) expect(reference.error.code).toBe('PROVIDER_UNAVAILABLE')
+  })
+
   it('reports a published version whose source mode drifted from the snapshot', () => {
     // A row turned from real into mock would otherwise be served by a mock port for work that was
     // confirmed against a real provider.
