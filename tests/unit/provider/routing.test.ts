@@ -24,8 +24,9 @@ import {
   textBasicConfig,
   textFlexConfig,
   textStructuredRequirements,
+  ttsHdConfig,
 } from '../../../shared/contracts/provider/fixtures.js'
-import type { ProviderDefault } from '../../../shared/contracts/provider/common.js'
+import type { ProviderConfig, ProviderDefault } from '../../../shared/contracts/provider/common.js'
 
 const withTextDefault = (configId: string): ProviderDefault[] =>
   providerDefaultFixtures.map(entry => (entry.kind === 'text' ? { kind: 'text', providerConfigId: configId, version: 1 } : entry))
@@ -78,6 +79,31 @@ describe('derived requirements', () => {
       operation: 'synthesize',
       voiceKind: 'cloned',
     })
+  })
+
+  it('requires audio output for music and speech requests', () => {
+    // Both ports must deliver audio, so a configuration that only declares text output cannot
+    // satisfy either request.
+    expect(deriveMusicRequirements(musicSubmitInputFixture)).toContainEqual({
+      operation: 'submit',
+      outputType: 'audio',
+    })
+    expect(deriveSpeechRequirements(speechSynthesizeInputFixture)).toContainEqual({
+      operation: 'synthesize',
+      outputType: 'audio',
+    })
+
+    const textOnlyMusic: ProviderConfig = {
+      ...musicStudioConfig,
+      capabilities: { ...musicStudioConfig.capabilities, outputTypes: ['text'] },
+    }
+    expect(checkAllCapabilities(textOnlyMusic.capabilities, musicSubmitRequirements).ok).toBe(false)
+
+    const textOnlySpeech: ProviderConfig = {
+      ...ttsHdConfig,
+      capabilities: { ...ttsHdConfig.capabilities, outputTypes: ['text'] },
+    }
+    expect(checkAllCapabilities(textOnlySpeech.capabilities, speechSynthesizeRequirements).ok).toBe(false)
   })
 
   it('refuses an over-long music prompt at quote time instead of inside a charged task', () => {

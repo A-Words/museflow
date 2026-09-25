@@ -152,7 +152,8 @@ export function deriveTextRequirements(input: TextGenerateInput, operation: Text
 export function deriveMusicRequirements(input: MusicSubmitInput): CapabilityRequirement[] {
   const characters = input.prompt.length + (input.lyrics?.length ?? 0)
   const requirements: CapabilityRequirement[] = [
-    { operation: 'submit' },
+    // A completed music result must carry audio, so the configuration has to declare it.
+    { operation: 'submit', outputType: 'audio' },
     // The declared input limit is part of the request, so an over-long prompt or lyrics is
     // refused at quote time instead of being truncated or rejected inside a charged task.
     { operation: 'submit', maxInputCharacters: Math.max(characters, 1) },
@@ -168,6 +169,8 @@ export function deriveMusicRequirements(input: MusicSubmitInput): CapabilityRequ
 
 export function deriveSpeechRequirements(input: SpeechSynthesizeInput): CapabilityRequirement[] {
   const requirements: CapabilityRequirement[] = [
+    // A completed speech result must carry audio, so the configuration has to declare it.
+    { operation: 'synthesize', outputType: 'audio' },
     { operation: 'synthesize', maxInputCharacters: Math.max(input.text.length, 1) },
     { operation: 'synthesize', language: input.language },
     // Derived from the voice reference instead of a fixed assumption, so the quote path and the

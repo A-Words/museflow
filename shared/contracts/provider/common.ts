@@ -29,6 +29,14 @@ export const operationsByKind = {
   tts: speechOperationSchema.options,
 } as const
 
+// The operation that makes an asynchronous result recoverable. Only music and speech expose a
+// query operation; an accepted text request can only be completed through a callback.
+export const queryOperationByKind: Record<ProviderKind, string | undefined> = {
+  text: undefined,
+  music: 'query',
+  tts: 'query',
+}
+
 // Provider output only ever produces lyrics, audio or a voice sample. The assets dictionary
 // additionally defines `cover`, which comes from a user upload (POST /assets) instead of a
 // provider, so it is deliberately absent here.
@@ -108,24 +116,23 @@ export const providerCapabilitiesSchema = z
         })
       }
     }
-    // An asynchronous port whose result can be neither queried nor delivered by callback
-    // could never be recovered, so it must not be published as a usable configuration.
-    if (value.modes.includes('async') && !value.supports.query && !value.supports.callbacks) {
-      context.addIssue({
-        code: 'custom',
-        path: ['supports', 'query'],
-        message: 'An asynchronous port must declare query or callback support; otherwise its result can never be recovered',
-      })
-    }
-    // The text port exposes no query operation, so an asynchronous text configuration can only
-    // be completed through a callback. Declaring neither would leave an accepted request with
-    // no recovery path even though the configuration passed the check above.
-    if (value.kind === 'text' && value.modes.includes('async') && !value.supports.callbacks) {
-      context.addIssue({
-        code: 'custom',
-        path: ['modes'],
-        message: 'An asynchronous text configuration must declare callback support; the text port has no query operation',
-      })
+    // An asynchronous port whose result can be neither queried nor delivered by callback could
+    // never be recovered, so it must not be published as a usable configuration. Advertising a
+    // query ability is not enough: the configuration must also declare the query operation that
+    // the caller would actually invoke. The text port has no query operation, so an accepted
+    // text request can only be completed through a callback.
+    if (value.modes.includes('async')) {
+      const queryOperation = queryOperationByKind[value.kind]
+      const canQuery =
+        queryOperation !== undefined && value.supports.query && value.operations.includes(queryOperation)
+      if (!canQuery && !value.supports.callbacks) {
+        context.addIssue({
+          code: 'custom',
+          path: ['supports', 'query'],
+          message:
+            'An asynchronous port must declare callback support, or a query ability backed by a declared query operation',
+        })
+      }
     }
   })
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>

@@ -177,6 +177,26 @@ describe('capability declarations', () => {
       }).success,
     ).toBe(true)
   })
+
+  it('requires a declared query operation for an asynchronous queryable configuration', () => {
+    // Advertising a query ability is not a recovery path on its own: the configuration must also
+    // declare the query operation the caller would invoke.
+    const withQueryAbility = {
+      ...base,
+      kind: 'music',
+      operations: ['submit'],
+      modes: ['async'],
+      outputTypes: ['audio'],
+      supports: { ...base.supports, query: true },
+    }
+    expect(providerCapabilitiesSchema.safeParse(withQueryAbility).success).toBe(false)
+    expect(
+      providerCapabilitiesSchema.safeParse({
+        ...withQueryAbility,
+        operations: ['submit', 'query'],
+      }).success,
+    ).toBe(true)
+  })
 })
 
 describe('configuration versions', () => {

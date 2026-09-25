@@ -49,8 +49,8 @@
 
 - 校验在调用与报价之前执行，不满足即返回 `UNSUPPORTED_CAPABILITY`，不做静默降级或截断。
 - 未声明的限制视为不满足，适配器必须显式声明它保证的范围。
-- 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，预设音色的翻唱不会被只支持预置音色的配置误拒。
-- 声明为 `async` 的适配器必须同时声明 `query` 或 `callbacks`，否则其结果永远无法恢复，schema 直接拒绝该配置；Text 端口没有 `query` 操作，因此 `async` 的 text 配置必须声明 `callbacks`。
+- 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。音乐提交与语音合成都要求 `outputType: 'audio'`，与"完成结果必须含音频"一致；因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，预设音色的翻唱不会被只支持预置音色的配置误拒。
+- 声明为 `async` 的适配器必须可恢复：或声明 `callbacks`，或同时声明 `query` 能力与 `operations` 中该 kind 的查询操作，否则 schema 直接拒绝该配置。只声明 `supports.query` 而不声明 `query` 操作不算恢复路径，调用方无法据其恢复请求；Text 端口没有 `query` 操作，因此 `async` 的 text 配置只能靠 `callbacks`。
 - `operations` 必须属于该 kind 的端口操作（例如 music 不能声明 `synthesize`）。
 - 配置的 `kind` 必须与 `capabilities.kind` 一致，否则发布时即被拒绝，而不是等到路由时才失败。
 
@@ -129,6 +129,6 @@ Mock 结果一律标记 `sourceMode: 'mock'`，产物地址使用保留域 `.inv
 
 ## 证据与限制
 
-- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、11 项能力不匹配样例、派生要求（输入长度、输出类型、音色种类，超长音乐输入在报价前拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口复用仍能查到已确认音色/未发出请求报 `unknown`/查询与取消复现已确认参数样例与 Mock 守卫。
+- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、异步配置的恢复路径校验（`async` 需 `callbacks`，或同时声明 `query` 能力与该 kind 的查询操作；text 只能靠 `callbacks`）、11 项能力不匹配样例、派生要求（输入长度、`outputType: 'audio'`、音色种类，超长音乐输入与仅声明文本输出的配置都在报价或校验阶段被拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口复用仍能查到已确认音色/未发出请求报 `unknown`/查询与取消复现已确认参数样例与 Mock 守卫。
 - 未实现，也未由测试覆盖：真实适配器请求与响应、密钥读取与轮换、任务调度、查询次数上限与恢复流程、回调验签与去重、`task_events` 写入、报价/任务/计费/存储归档，以及 Nuxt API 暴露。
 - 因此当前只能声明“契约与 Mock 样例就绪”，不能声明 FR-11 或 T-26/T-27 已通过；真实能力与费用证据在接入真实适配器后另行记录，Mock 不混入真实成功率。
