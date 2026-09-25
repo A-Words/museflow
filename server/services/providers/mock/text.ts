@@ -36,7 +36,6 @@ function streamErrorCode(code: ProviderErrorCode): StreamErrorCode {
 }
 
 export function createMockTextPort(config: ProviderConfig, script: MockScript = createMockScript()): TextProviderPort {
-  const streamSupported = config.capabilities.modes.includes('stream')
   const asyncSupported = config.capabilities.modes.includes('async')
   if (config.sourceMode !== 'mock') {
     throw new Error(`createMockTextPort only accepts mock configurations, received ${config.providerKey}`)
@@ -154,16 +153,20 @@ export function createMockTextPort(config: ProviderConfig, script: MockScript = 
     async *stream(input: TextGenerateInput) {
       script.calls.push({ operation: 'stream', requestKey: input.requestKey })
       let sequence = 0
-      if (!streamSupported) {
+      await script.wait()
+      // The same derived requirements as generate, so a stream the configuration does not
+      // promise (no stream mode, unsupported output type, over-long input) is refused here
+      // instead of producing a successful stream.
+      const check = checkAllCapabilities(config.capabilities, deriveTextRequirements(input, 'stream'))
+      if (!check.ok) {
         yield textStreamEventSchema.parse({
           type: 'error',
           sequence: 1,
-          code: 'UNSUPPORTED_CAPABILITY',
-          message: `Configuration ${config.providerKey} has no stream mode`,
+          code: streamErrorCode(check.error.code),
+          message: check.error.message,
         })
         return
       }
-      await script.wait()
       const step = script.next('stream')
       if (step.outcome === 'rejected') {
         yield textStreamEventSchema.parse({

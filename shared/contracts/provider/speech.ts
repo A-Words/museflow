@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  hasRetrievableAudio,
   providerAcceptedSchema,
   providerArtifactSchema,
   providerCanceledSchema,
@@ -58,8 +59,8 @@ export const speechCompletedSchema = z
     sourceMode: sourceModeSchema,
     observedAt: z.iso.datetime(),
   })
-  .refine(value => value.artifacts.some(artifact => artifact.kind === 'audio'), {
-    message: 'A completed speech result requires at least one audio artifact',
+  .refine(value => hasRetrievableAudio(value.artifacts), {
+    message: 'A completed speech result requires an audio artifact with a retrievable download URL',
     path: ['artifacts'],
   })
 export type SpeechCompleted = z.infer<typeof speechCompletedSchema>

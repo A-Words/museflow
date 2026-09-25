@@ -49,6 +49,13 @@ export const providerArtifactSchema = z.strictObject({
 })
 export type ProviderArtifact = z.infer<typeof providerArtifactSchema>
 
+// A completion is only usable when the caller can actually retrieve the bytes: an audio
+// artifact without a controlled download URL would let a completion be reported while the
+// task has nothing to archive or deliver.
+export function hasRetrievableAudio(artifacts: readonly ProviderArtifact[]): boolean {
+  return artifacts.some(artifact => artifact.kind === 'audio' && artifact.downloadUrl !== undefined)
+}
+
 export const providerUsageSchema = z.strictObject({
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),
@@ -110,6 +117,16 @@ export const providerCapabilitiesSchema = z
         message: 'An asynchronous port must declare query or callback support; otherwise its result can never be recovered',
       })
     }
+    // The text port exposes no query operation, so an asynchronous text configuration can only
+    // be completed through a callback. Declaring neither would leave an accepted request with
+    // no recovery path even though the configuration passed the check above.
+    if (value.kind === 'text' && value.modes.includes('async') && !value.supports.callbacks) {
+      context.addIssue({
+        code: 'custom',
+        path: ['modes'],
+        message: 'An asynchronous text configuration must declare callback support; the text port has no query operation',
+      })
+    }
   })
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>
 
@@ -119,22 +136,30 @@ export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>
 
 // Mirrors provider_configs. A (providerKey, version) pair is immutable: publishing a
 // change creates a new version, and enabled/disabled is a separate audited change.
-export const providerConfigSchema = z.strictObject({
-  providerConfigId: z.uuid(),
-  providerKey: z.string().min(1),
-  version: z.number().int().positive(),
-  kind: providerKindSchema,
-  adapterId: z.string().min(1),
-  modelId: z.string().min(1),
-  baseUrl: z.url().optional(),
-  // Reference only. The secret itself lives in server configuration and never appears
-  // in snapshots, quotes, tasks, API responses or logs.
-  credentialRef: z.string().min(1),
-  capabilities: providerCapabilitiesSchema,
-  parameterMapping: z.record(z.string(), z.string()),
-  enabled: z.boolean(),
-  sourceMode: sourceModeSchema,
-})
+export const providerConfigSchema = z
+  .strictObject({
+    providerConfigId: z.uuid(),
+    providerKey: z.string().min(1),
+    version: z.number().int().positive(),
+    kind: providerKindSchema,
+    adapterId: z.string().min(1),
+    modelId: z.string().min(1),
+    baseUrl: z.url().optional(),
+    // Reference only. The secret itself lives in server configuration and never appears
+    // in snapshots, quotes, tasks, API responses or logs.
+    credentialRef: z.string().min(1),
+    capabilities: providerCapabilitiesSchema,
+    parameterMapping: z.record(z.string(), z.string()),
+    enabled: z.boolean(),
+    sourceMode: sourceModeSchema,
+  })
+  // A capability snapshot that declares another kind would otherwise be publishable under this
+  // kind and then refuse every request routed to it, so it is refused at publish time instead
+  // of failing later during routing.
+  .refine(value => value.capabilities.kind === value.kind, {
+    message: 'capabilities.kind must match the configuration kind',
+    path: ['capabilities', 'kind'],
+  })
 export type ProviderConfig = z.infer<typeof providerConfigSchema>
 
 export const providerConfigRefSchema = z.strictObject({

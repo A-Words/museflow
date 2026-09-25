@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   checkAllCapabilities,
   classifyProviderFailure,
+  deriveMusicRequirements,
+  deriveSpeechRequirements,
   resolveConfigReferenceRoute,
   resolveSnapshotRoute,
   selectProviderForNewRequest,
@@ -11,11 +13,13 @@ import {
   capabilityMismatchFixtures,
   musicLiteConfig,
   musicStudioConfig,
+  musicSubmitInputFixture,
   musicSubmitRequirements,
   providerConfigFixtures,
   providerDefaultFixtures,
   providerFixtureCapturedAt,
   retryClassificationFixtures,
+  speechSynthesizeInputFixture,
   speechSynthesizeRequirements,
   textBasicConfig,
   textFlexConfig,
@@ -40,6 +44,60 @@ describe('capability validation samples', () => {
     expect(checkAllCapabilities(textFlexConfig.capabilities, textStructuredRequirements).ok).toBe(true)
     expect(checkAllCapabilities(musicStudioConfig.capabilities, musicSubmitRequirements).ok).toBe(true)
     expect(checkAllCapabilities(textFlexConfig.capabilities, speechSynthesizeRequirements).ok).toBe(false)
+  })
+})
+
+describe('derived requirements', () => {
+  it('includes the declared input size and the cover voice kind', () => {
+    const requirements = deriveMusicRequirements(musicSubmitInputFixture)
+    expect(requirements).toContainEqual({
+      operation: 'submit',
+      maxInputCharacters: musicSubmitInputFixture.prompt.length + (musicSubmitInputFixture.lyrics?.length ?? 0),
+    })
+
+    // A preset cover must not be treated as a cloned one, or a preset-only configuration would
+    // refuse a request it can actually serve.
+    const presetCover = {
+      ...musicSubmitInputFixture,
+      sourceAssetId: '11111111-1111-4111-8111-111111111111',
+      voiceRef: 'preset:zh-female-01',
+    }
+    expect(deriveMusicRequirements(presetCover)).toContainEqual({ operation: 'submit', voiceKind: 'preset' })
+    expect(deriveMusicRequirements({ ...presetCover, voiceRef: 'cloned:voice-01' })).toContainEqual({
+      operation: 'submit',
+      voiceKind: 'cloned',
+    })
+  })
+
+  it('derives the voice kind of a speech request from its voice reference', () => {
+    expect(deriveSpeechRequirements(speechSynthesizeInputFixture)).toContainEqual({
+      operation: 'synthesize',
+      voiceKind: 'preset',
+    })
+    expect(deriveSpeechRequirements({ ...speechSynthesizeInputFixture, voiceRef: 'cloned:voice-01' })).toContainEqual({
+      operation: 'synthesize',
+      voiceKind: 'cloned',
+    })
+  })
+
+  it('refuses an over-long music prompt at quote time instead of inside a charged task', () => {
+    const longRequest = {
+      requestKey: musicSubmitInputFixture.requestKey,
+      prompt: 'x'.repeat(600),
+      instrumental: true,
+      durationSeconds: 30,
+      format: 'mp3',
+      language: 'zh',
+    }
+    const route = selectProviderForNewRequest({
+      kind: 'music',
+      defaults: withMusicDefault(musicLiteConfig.providerConfigId),
+      configs: providerConfigFixtures,
+      requirements: deriveMusicRequirements(longRequest),
+      now: providerFixtureCapturedAt,
+    })
+    expect(route.ok).toBe(false)
+    if (!route.ok) expect(route.error.code).toBe('UNSUPPORTED_CAPABILITY')
   })
 })
 
@@ -126,6 +184,20 @@ describe('existing snapshots stay on their original configuration', () => {
     const resolved = resolveSnapshotRoute({ snapshot, configs: drifted })
     expect(resolved.ok).toBe(false)
     if (!resolved.ok) expect(resolved.error.code).toBe('UNSUPPORTED_CAPABILITY')
+  })
+
+  it('reports a published version whose parameter mapping drifted from the snapshot', () => {
+    // Executing an old quote with a rewritten mapping would send different parameters than the
+    // ones the user confirmed, so the frozen mapping is compared as well.
+    const snapshot = snapshotProvider(textFlexConfig, providerFixtureCapturedAt)
+    const drifted = providerConfigFixtures.map(config =>
+      config.providerConfigId === textFlexConfig.providerConfigId
+        ? { ...config, parameterMapping: { messages: 'renamed_messages' } }
+        : config,
+    )
+    const resolved = resolveSnapshotRoute({ snapshot, configs: drifted })
+    expect(resolved.ok).toBe(false)
+    if (!resolved.ok) expect(resolved.error.code).toBe('PROVIDER_UNAVAILABLE')
   })
 
   it('reports a snapshot whose requirement set is no longer supported', () => {

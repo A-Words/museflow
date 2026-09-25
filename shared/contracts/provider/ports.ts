@@ -39,8 +39,10 @@ export interface ProviderAdapterBase {
 export interface TextProviderPort extends ProviderAdapterBase {
   generate(input: TextGenerateInput): Promise<TextResult>
   /**
-   * First event is always `start`. An adapter without stream support yields a single
-   * `error` event with code UNSUPPORTED_CAPABILITY; it never emits a fake delta.
+   * The first event is `start`, followed by deltas and a `finish`. The only exception is a
+   * stream that cannot run at all: an adapter without stream support, or a request the
+   * configuration cannot satisfy, yields exactly one `error` event (UNSUPPORTED_CAPABILITY
+   * among others) and never a fake delta or a `start` it cannot follow up.
    */
   stream(input: TextStreamInput): AsyncIterable<TextStreamEvent>
 }

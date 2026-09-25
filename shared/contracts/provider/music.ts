@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  hasRetrievableAudio,
   providerAcceptedSchema,
   providerArtifactSchema,
   providerCanceledSchema,
@@ -65,8 +66,8 @@ export const musicCancelInputSchema = z.strictObject({
 })
 export type MusicCancelInput = z.infer<typeof musicCancelInputSchema>
 
-// A completed result must carry at least one audio artifact; partial or missing output is
-// not a success and cannot be settled as one.
+// A completed result must carry at least one audio artifact the caller can retrieve; partial,
+// unreachable or missing output is not a success and cannot be settled as one.
 export const musicCompletedSchema = z
   .strictObject({
     outcome: z.literal('completed'),
@@ -80,8 +81,8 @@ export const musicCompletedSchema = z
     sourceMode: sourceModeSchema,
     observedAt: z.iso.datetime(),
   })
-  .refine(value => value.artifacts.some(artifact => artifact.kind === 'audio'), {
-    message: 'A completed music result requires at least one audio artifact',
+  .refine(value => hasRetrievableAudio(value.artifacts), {
+    message: 'A completed music result requires an audio artifact with a retrievable download URL',
     path: ['artifacts'],
   })
 export type MusicCompleted = z.infer<typeof musicCompletedSchema>

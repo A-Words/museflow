@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ProviderConfig } from '../../../shared/contracts/provider/common.js'
 import type {
   MusicProviderPort,
   ProviderPort,
@@ -21,9 +22,15 @@ import {
   textGenerateInputFixture,
   textStreamInputFixture,
   ttsBasicConfig,
+  ttsHdConfig,
 } from '../../../shared/contracts/provider/fixtures.js'
 import { createMockProviderRegistry, type MockProviderRegistryOptions } from '../../../server/services/providers/registry.js'
-import { createMockMusicPort, createMockScript, createMockTextPort } from '../../../server/services/providers/mock/index.js'
+import {
+  createMockMusicPort,
+  createMockScript,
+  createMockSpeechPort,
+  createMockTextPort,
+} from '../../../server/services/providers/mock/index.js'
 
 // Samples for the contract review: success, explicit failure and an unknown external result,
 // plus the two controlled configurations per kind. These tests prove the ports behave as the
@@ -163,6 +170,38 @@ describe('text mock samples', () => {
     expect(events[0]).toMatchObject({ type: 'start', sequence: 0, sourceMode: 'mock' })
     expect(events.at(-1)).toMatchObject({ type: 'finish', finishReason: 'stop' })
     expect(events.filter(event => event.type === 'text-delta').length).toBeGreaterThan(0)
+  })
+
+  it('refuses a stream whose output type the configuration does not declare', async () => {
+    // stream must validate the same derived requirements as generate: a configuration that
+    // has the stream mode but not the requested output type cannot return a successful stream.
+    const textOnlyConfig: ProviderConfig = {
+      ...textFlexConfig,
+      capabilities: { ...textFlexConfig.capabilities, outputTypes: ['text'] },
+    }
+    const port = createMockTextPort(textOnlyConfig, createMockScript({ now: clock }))
+
+    const events = []
+    for await (const event of port.stream({ ...textStreamInputFixture, responseFormat: 'json', structuredSchemaRef: 'lyrics-draft-v1' })) {
+      events.push(event)
+    }
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'error', code: 'UNSUPPORTED_CAPABILITY' })
+  })
+
+  it('refuses a stream whose input exceeds the declared limit', async () => {
+    const shortInputConfig: ProviderConfig = {
+      ...textFlexConfig,
+      capabilities: { ...textFlexConfig.capabilities, limits: { maxInputCharacters: 8 } },
+    }
+    const port = createMockTextPort(shortInputConfig, createMockScript({ now: clock }))
+
+    const events = []
+    for await (const event of port.stream(textStreamInputFixture)) {
+      events.push(event)
+    }
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ type: 'error', code: 'UNSUPPORTED_CAPABILITY' })
   })
 })
 
@@ -346,6 +385,49 @@ describe('speech mock samples', () => {
     // The delivered audio can be checked against the voice that was actually confirmed.
     expect(query.voiceRef).toBe('cloned:voice-01')
     expect(query.voiceKind).toBe('cloned')
+  })
+
+  it('keeps the confirmed voice metadata when the snapshot is resolved again', async () => {
+    const registry = registryWith({
+      'mock-tts-hd': {
+        now: clock,
+        perOperation: { synthesize: [{ outcome: 'accepted' }], query: [{ outcome: 'completed' }] },
+      },
+    })
+    const route = registry.selectForNewRequest({
+      kind: 'tts',
+      requirements: speechSynthesizeRequirements,
+      now: providerFixtureCapturedAt,
+    })
+    if (!route.ok) throw new Error(route.error.message)
+
+    const request = { ...speechSynthesizeInputFixture, voiceRef: 'cloned:voice-01' }
+    const accepted = await asSpeechPort(registry.port(route.snapshot)).synthesize(request)
+    expect(accepted.outcome).toBe('accepted')
+    if (accepted.outcome !== 'accepted') return
+
+    // A task that resolves its stored snapshot again must reach the port that issued the
+    // request, not a fresh instance that forgot the confirmed voice.
+    const query = await asSpeechPort(registry.port(route.snapshot)).query({
+      requestKey: request.requestKey,
+      requestId: accepted.requestId,
+    })
+    expect(query.outcome).toBe('completed')
+    if (query.outcome !== 'completed') return
+    expect(query.voiceRef).toBe('cloned:voice-01')
+    expect(query.voiceKind).toBe('cloned')
+  })
+
+  it('reports a request it never issued as unconfirmable instead of inventing a voice', async () => {
+    const port = createMockSpeechPort(
+      ttsHdConfig,
+      createMockScript({ now: clock, perOperation: { query: [{ outcome: 'completed' }] } }),
+    )
+    const query = await port.query({ requestKey: 'mock-tts-request-unknown', requestId: 'mock-request-unknown' })
+    expect(query.outcome).toBe('unknown')
+    if (query.outcome !== 'unknown') return
+    expect(query.reason).toBe('query-unavailable')
+    expect(query.retryable).toBe(false)
   })
 })
 

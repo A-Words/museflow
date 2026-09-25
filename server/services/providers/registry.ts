@@ -55,6 +55,10 @@ export function createMockProviderRegistry(options: MockProviderRegistryOptions)
   const configs = [...options.configs]
   const defaults = [...options.defaults]
   const scripts = new Map<string, MockScript>()
+  // One port instance per configuration version. A port keeps request state (for example the
+  // voice metadata a speech request confirmed), so a task that re-resolves its snapshot must
+  // receive the same instance instead of a fresh one that forgot the in-flight request.
+  const ports = new Map<string, ProviderPort>()
 
   function scriptFor(adapterId: string): MockScript {
     const existing = scripts.get(adapterId)
@@ -62,6 +66,17 @@ export function createMockProviderRegistry(options: MockProviderRegistryOptions)
     const created = createMockScript(options.scripts?.[adapterId] ?? {})
     scripts.set(adapterId, created)
     return created
+  }
+
+  function createPort(config: ProviderConfig, script: MockScript): ProviderPort {
+    switch (config.kind) {
+      case 'text':
+        return createMockTextPort(config, script)
+      case 'music':
+        return createMockMusicPort(config, script)
+      case 'tts':
+        return createMockSpeechPort(config, script)
+    }
   }
 
   return {
@@ -106,15 +121,15 @@ export function createMockProviderRegistry(options: MockProviderRegistryOptions)
           `No adapter is registered for ${published.adapterId}; real adapters arrive with the per-kind issues`,
         )
       }
+      // Keyed by the immutable configuration version, so re-resolving a snapshot returns the
+      // port that already knows its in-flight requests.
+      const cacheKey = `${published.providerConfigId}@${published.version}`
+      const cached = ports.get(cacheKey)
+      if (cached) return cached
       const script = scriptFor(published.adapterId)
-      switch (published.kind) {
-        case 'text':
-          return createMockTextPort(published, script)
-        case 'music':
-          return createMockMusicPort(published, script)
-        case 'tts':
-          return createMockSpeechPort(published, script)
-      }
+      const created = createPort(published, script)
+      ports.set(cacheKey, created)
+      return created
     },
   }
 }

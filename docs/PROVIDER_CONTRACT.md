@@ -6,7 +6,7 @@
 | --- | --- |
 | `shared/contracts/provider/` | 运行时 Zod schema、类型、能力校验、配置版本、路由与重试规则、两套可控配置样例 |
 | `server/services/providers/mock/` | 三个端口的 Mock 适配器与可编程脚本（成功/失败/未知） |
-| `server/services/providers/registry.ts` | 适配器注册表：按当前默认选择、按快照路由 |
+| `server/services/providers/registry.ts` | 适配器注册表：按当前默认选择、按快照路由，每个配置版本复用同一端口实例（端口保留在途请求状态） |
 | `tests/unit/provider/` | 契约、能力与切换样例的单元测试 |
 
 本项不实现任务服务、报价、账本、存储归档和真实网络调用；这些由 MF-05/07/08/11/12/13 完成。Mock 通过不等于真实适配器验收。
@@ -26,7 +26,7 @@
 
 - `accepted` 只表示外部已受理，携带厂商 `requestId`，不代表成功，不能据此归档或结算。
 - `accepted` 只在该配置声明 `async` 时返回；同步配置收到异步结果时返回 `UNSUPPORTED_CAPABILITY`，避免产生调用方永远无法查询或完成的状态。
-- 流式增量不构成可执行输入；未完成的 `tool-call-delta` 不能触发任何业务动作。不支持流式的适配器只产出单条 `error`（`UNSUPPORTED_CAPABILITY`），不伪造增量。
+- 流式增量不构成可执行输入；未完成的 `tool-call-delta` 不能触发任何业务动作。流式事件首个为 `start`（`requestKey`、`modelId`、`sourceMode`），其后为 `text-delta`/`tool-call-delta` 与 `finish`；唯一例外是根本无法启动的流——不支持流式的适配器，或配置无法满足的请求，只产出单条 `error`（端口允许的错误码，能力不匹配时为 `UNSUPPORTED_CAPABILITY`），既没有前置 `start`，也不伪造增量。
 - 流式 `error` 事件只使用端口允许的子集（`UNSUPPORTED_CAPABILITY`、`PROVIDER_UNAVAILABLE`、`RATE_LIMITED`、`CONTENT_REJECTED`、`RESULT_UNKNOWN`、`INTERNAL_ERROR`）。适配器不得把厂商原始错误体或子集外的错误码透出，无法归类时统一为 `INTERNAL_ERROR`。
 - 网络不确定单独表达为 `unknown`（`retryable` 固定为 `false`），不混同为 `rejected`。
 - 每个适配器必须实现端口全部方法；不支持时返回明确拒绝，而不是静默降级。
@@ -38,7 +38,7 @@
 - 音乐输入：`prompt`、`instrumental`、`lyrics` 与 `lyricsAssetId` 二选一、`durationSeconds`、`format`、`language`；P1 翻唱另带 `sourceAssetId` 与 `voiceRef`（必须成对）。
 - 语音输入：`text`、`voiceRef`、`language`、`format`、`sampleRateHz`、`speed`。
 - 结果统一以 `outcome` 判别：`completed` / `accepted` / `canceled` / `rejected` / `unknown`。
-- 完成的音乐或语音结果必须含至少一个 `audio` 产物；语音结果另带 `voiceRef`、`voiceKind`、`language`、`format`，便于核对交付音频与已确认请求一致。
+- 完成的音乐或语音结果必须含至少一个带受控 `downloadUrl` 的 `audio` 产物：只有 `kind: 'audio'` 而无法检索内容的产物不构成完成，不能据此归档或结算；语音结果另带 `voiceRef`、`voiceKind`、`language`、`format`，便于核对交付音频与已确认请求一致。
 - 产物只描述引用（`kind`、`format`、`mimeType`、`byteSize`、`durationMs`、`checksumSha256`、受控 `downloadUrl` 及过期时间）。调用方必须重新校验主机、重定向、内容类型和大小后再下载，URL 本身不构成成功。
 - `requestKey` 是系统生成的稳定请求标识，用于厂商侧幂等与查询；`requestId` 由厂商返回。二者都不承载归属、积分或用户身份。
 
@@ -48,8 +48,10 @@
 
 - 校验在调用与报价之前执行，不满足即返回 `UNSUPPORTED_CAPABILITY`，不做静默降级或截断。
 - 未声明的限制视为不满足，适配器必须显式声明它保证的范围。
-- 声明为 `async` 的适配器必须同时声明 `query` 或 `callbacks`，否则其结果永远无法恢复，schema 直接拒绝该配置。
+- 报价与调用使用同一套派生要求（`deriveTextRequirements`/`deriveMusicRequirements`/`deriveSpeechRequirements`）：输入长度、输出类型、时长、格式、语言以及由 `voiceRef` 命名空间推出的音色种类（`cloned:` 前缀为克隆音色，其余为预置音色）。因此超长输入、未声明的输出类型或克隆音色都在报价阶段被拒绝，预设音色的翻唱不会被只支持预置音色的配置误拒。
+- 声明为 `async` 的适配器必须同时声明 `query` 或 `callbacks`，否则其结果永远无法恢复，schema 直接拒绝该配置；Text 端口没有 `query` 操作，因此 `async` 的 text 配置必须声明 `callbacks`。
 - `operations` 必须属于该 kind 的端口操作（例如 music 不能声明 `synthesize`）。
+- 配置的 `kind` 必须与 `capabilities.kind` 一致，否则发布时即被拒绝，而不是等到路由时才失败。
 
 ## 配置版本与快照
 
@@ -68,6 +70,7 @@
 | 克隆声音档案 | 只保存配置 id 与版本，用 `resolveConfigReferenceRoute` 按同一规则解析；切换默认不会迁移已建音色 |
 | 原配置被禁用或版本不可读 | 返回 `PROVIDER_UNAVAILABLE`，要求重新报价确认或进入核对 |
 | 发布版本能力与快照不一致 | 返回 `UNSUPPORTED_CAPABILITY`，不按新能力继续执行 |
+| 发布版本参数映射与快照不一致 | 返回 `PROVIDER_UNAVAILABLE`：旧报价与在途任务不得用改写后的映射执行 |
 | 正在进行的文本流 | 保留原请求连接，下一轮才读取新默认配置 |
 
 切换默认不改变历史快照，也不把原供应商的请求标识发送给新供应商；本项目不提供自动跨供应商重试或路由优化。
@@ -125,6 +128,6 @@ Mock 结果一律标记 `sourceMode: 'mock'`，产物地址使用保留域 `.inv
 
 ## 证据与限制
 
-- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含音频、语音结果必须带音色与语言）、11 项能力不匹配样例、默认切换与快照/配置引用固定原供应商（含原配置被禁用与能力漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/同步配置拒绝 `accepted` 样例与 Mock 守卫。
+- 已由 `tests/unit/provider/` 覆盖：三类端口的输入输出 schema（拒绝未知字段、`accepted` 必须携带请求标识、完成结果必须含可检索的音频、语音结果必须带音色与语言、配置 `kind` 与 `capabilities.kind` 必须一致）、11 项能力不匹配样例、派生要求（输入长度、输出类型、音色种类，超长音乐输入在报价前拒绝）、默认切换与快照/配置引用固定原供应商（含原配置被禁用、能力漂移与参数映射漂移）、重试分级表（含回调确认阶段），以及 Mock 的成功/失败/未知/取消/无流式能力/流式要求校验/同步配置拒绝 `accepted`/端口复用仍能查到已确认音色/未发出请求报 `unknown` 样例与 Mock 守卫。
 - 未实现，也未由测试覆盖：真实适配器请求与响应、密钥读取与轮换、任务调度、查询次数上限与恢复流程、回调验签与去重、`task_events` 写入、报价/任务/计费/存储归档，以及 Nuxt API 暴露。
 - 因此当前只能声明“契约与 Mock 样例就绪”，不能声明 FR-11 或 T-26/T-27 已通过；真实能力与费用证据在接入真实适配器后另行记录，Mock 不混入真实成功率。

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   providerCapabilitiesSchema,
+  providerConfigSchema,
   providerStatusEventSchema,
 } from '../../../shared/contracts/provider/common.js'
 import { musicCompletedSchema } from '../../../shared/contracts/provider/music.js'
 import { speechCompletedSchema } from '../../../shared/contracts/provider/speech.js'
 import { textResultSchema } from '../../../shared/contracts/provider/text.js'
 import { publishProviderConfig } from '../../../shared/contracts/provider/routing.js'
-import { providerFixtureCapturedAt, textFlexConfig } from '../../../shared/contracts/provider/fixtures.js'
+import { musicStudioConfig, providerFixtureCapturedAt, textFlexConfig } from '../../../shared/contracts/provider/fixtures.js'
 
 const textCompleted = {
   outcome: 'completed',
@@ -108,6 +109,34 @@ describe('music and speech completion contracts', () => {
     const withoutVoiceKind = Object.fromEntries(Object.entries(completed).filter(([key]) => key !== 'voiceKind'))
     expect(speechCompletedSchema.safeParse(withoutVoiceKind).success).toBe(false)
   })
+
+  it('refuses a completion whose audio artifact cannot be retrieved', () => {
+    // A completion without a retrievable audio reference would leave the task nothing to
+    // archive or deliver, so it is not a success even though the artifact kind is right.
+    const unreachable = {
+      outcome: 'completed',
+      requestKey: 'mock-music-request-0001',
+      artifacts: [{ kind: 'audio' }],
+      sourceMode: 'mock',
+      observedAt: providerFixtureCapturedAt,
+    }
+    expect(musicCompletedSchema.safeParse(unreachable).success).toBe(false)
+    expect(
+      musicCompletedSchema.safeParse({
+        ...unreachable,
+        artifacts: [{ kind: 'audio', downloadUrl: 'https://mock.invalid/audio.mp3' }],
+      }).success,
+    ).toBe(true)
+    expect(
+      speechCompletedSchema.safeParse({
+        ...unreachable,
+        requestKey: 'mock-tts-request-0001',
+        voiceRef: 'preset:zh-female-01',
+        voiceKind: 'preset',
+        language: 'zh',
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe('capability declarations', () => {
@@ -135,9 +164,30 @@ describe('capability declarations', () => {
       }).success,
     ).toBe(true)
   })
+
+  it('refuses an asynchronous text configuration without callback support', () => {
+    // The text port exposes no query operation, so a callback is the only recovery path: even a
+    // declared query ability could never be called.
+    const asynchronous = { ...base, modes: ['async'], supports: { ...base.supports, query: true } }
+    expect(providerCapabilitiesSchema.safeParse(asynchronous).success).toBe(false)
+    expect(
+      providerCapabilitiesSchema.safeParse({
+        ...asynchronous,
+        supports: { ...base.supports, callbacks: true },
+      }).success,
+    ).toBe(true)
+  })
 })
 
 describe('configuration versions', () => {
+  it('refuses a configuration whose capability kind differs from its own kind', () => {
+    // Such a configuration could be published as a default of one kind and then refuse every
+    // request routed to it, so it is refused at publish time.
+    const mismatched = { ...textFlexConfig, capabilities: musicStudioConfig.capabilities }
+    expect(providerConfigSchema.safeParse(mismatched).success).toBe(false)
+    expect(providerConfigSchema.safeParse({ ...mismatched, kind: 'music' }).success).toBe(true)
+  })
+
   it('publishes a new version instead of overwriting the existing one', () => {
     const published = publishProviderConfig([textFlexConfig], {
       providerConfigId: textFlexConfig.providerConfigId,

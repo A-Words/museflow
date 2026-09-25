@@ -130,6 +130,14 @@ export function checkAllCapabilities(
 // Deriving requirements from a normalized request
 // ---------------------------------------------------------------------------
 
+// A voice reference is namespaced: the `cloned:` prefix marks a cloned profile and everything
+// else is a preset voice. The quote path and the ports derive the required voice kind from the
+// same helper, so a preset cover is not refused by a preset-only configuration and a cloned
+// request is not quoted against a configuration that only declares presets.
+export function voiceKindOf(voiceRef: string): 'preset' | 'cloned' {
+  return voiceRef.startsWith('cloned:') ? 'cloned' : 'preset'
+}
+
 export function deriveTextRequirements(input: TextGenerateInput, operation: TextOperation): CapabilityRequirement[] {
   const requirements: CapabilityRequirement[] = [
     { operation, mode: operation === 'stream' ? 'stream' : 'sync' },
@@ -142,11 +150,19 @@ export function deriveTextRequirements(input: TextGenerateInput, operation: Text
 }
 
 export function deriveMusicRequirements(input: MusicSubmitInput): CapabilityRequirement[] {
-  const requirements: CapabilityRequirement[] = [{ operation: 'submit' }]
+  const characters = input.prompt.length + (input.lyrics?.length ?? 0)
+  const requirements: CapabilityRequirement[] = [
+    { operation: 'submit' },
+    // The declared input limit is part of the request, so an over-long prompt or lyrics is
+    // refused at quote time instead of being truncated or rejected inside a charged task.
+    { operation: 'submit', maxInputCharacters: Math.max(characters, 1) },
+  ]
   if (input.durationSeconds) requirements.push({ operation: 'submit', maxDurationSeconds: input.durationSeconds })
   if (input.format) requirements.push({ operation: 'submit', audioFormat: input.format })
   if (input.language) requirements.push({ operation: 'submit', language: input.language })
-  if (input.sourceAssetId && input.voiceRef) requirements.push({ operation: 'submit', voiceKind: 'cloned' })
+  if (input.sourceAssetId && input.voiceRef) {
+    requirements.push({ operation: 'submit', voiceKind: voiceKindOf(input.voiceRef) })
+  }
   return requirements
 }
 
@@ -154,6 +170,9 @@ export function deriveSpeechRequirements(input: SpeechSynthesizeInput): Capabili
   const requirements: CapabilityRequirement[] = [
     { operation: 'synthesize', maxInputCharacters: Math.max(input.text.length, 1) },
     { operation: 'synthesize', language: input.language },
+    // Derived from the voice reference instead of a fixed assumption, so the quote path and the
+    // port agree on which voice kinds the configuration must declare.
+    { operation: 'synthesize', voiceKind: voiceKindOf(input.voiceRef) },
   ]
   if (input.format) requirements.push({ operation: 'synthesize', audioFormat: input.format })
   return requirements
@@ -267,6 +286,14 @@ export type SnapshotRoute =
 
 export type ConfigResolution = { ok: true; config: ProviderConfig } | { ok: false; error: ProviderError }
 
+// A published version is immutable, so a frozen mapping must still match it. Compared
+// order-insensitively so a re-serialized mapping is not reported as drift.
+function sameParameterMapping(left: Record<string, string>, right: Record<string, string>): boolean {
+  const normalize = (value: Record<string, string>) =>
+    JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+  return normalize(left) === normalize(right)
+}
+
 // Shared by stored snapshots and by records that only keep a configuration reference (for
 // example a cloned voice profile bound to its provider). It never reads the provider defaults,
 // so an in-flight request cannot be moved to a newly selected provider, and a disabled
@@ -277,6 +304,8 @@ function resolvePublishedConfig(input: {
   requirements?: readonly CapabilityRequirement[]
   /** Capability snapshot taken when the work was quoted; compared against the published version. */
   expectedCapabilities?: ProviderCapabilities
+  /** Parameter mapping frozen in the snapshot; compared so a task never runs with other semantics. */
+  expectedParameterMapping?: Record<string, string>
 }): ConfigResolution {
   const ref = input.config
   const found = findConfig(input.configs, ref)
@@ -306,7 +335,19 @@ function resolvePublishedConfig(input: {
       }),
     }
   }
-  // Version immutability means the capability snapshot must still match the published version.
+  // Version immutability means the frozen snapshot must still match the published version.
+  // A mapping that drifted would execute an old quote or an in-flight task with different
+  // parameter semantics than the confirmed one, so it is refused like a capability drift.
+  if (input.expectedParameterMapping && !sameParameterMapping(found.parameterMapping, input.expectedParameterMapping)) {
+    return {
+      ok: false,
+      error: providerError(
+        'PROVIDER_UNAVAILABLE',
+        'The published parameter mapping no longer matches the frozen snapshot; requote or reconcile',
+        { details: { providerKey: ref.providerKey, version: String(ref.version) } },
+      ),
+    }
+  }
   // Both sides are parsed first so the comparison is not sensitive to key order.
   let capabilities = found.capabilities
   if (input.expectedCapabilities) {
@@ -343,6 +384,7 @@ export function resolveSnapshotRoute(input: {
     config: input.snapshot.config,
     configs: input.configs,
     expectedCapabilities: input.snapshot.capabilities,
+    expectedParameterMapping: input.snapshot.parameterMapping,
     ...(input.requirements ? { requirements: input.requirements } : {}),
   })
   if (!resolved.ok) return resolved

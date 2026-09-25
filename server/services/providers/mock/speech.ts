@@ -9,33 +9,18 @@ import {
   checkAllCapabilities,
   deriveSpeechRequirements,
   providerError,
-  type CapabilityRequirement,
+  voiceKindOf,
 } from '../../../../shared/contracts/provider/routing.js'
 import { mockAudioArtifact } from './media.js'
 import { createMockScript, type MockScript } from './script.js'
 
 // Speech mock. The voice reference decides the required voice kind ('cloned:' prefixes a
-// cloned profile), which is checked against the configuration before any work is done. A
-// configuration without the async mode refuses an asynchronous script step instead of
-// returning an accepted request it could never complete.
-
-export function voiceKindOf(voiceRef: string): 'preset' | 'cloned' {
-  return voiceRef.startsWith('cloned:') ? 'cloned' : 'preset'
-}
-
-/** Used only when the mock is asked about a request it never issued. */
-const placeholderVoice: {
-  voiceRef: string
-  voiceKind: 'preset' | 'cloned'
-  language: string
-  format?: string
-  characters: number
-} = {
-  voiceRef: 'preset:zh-female-01',
-  voiceKind: 'preset',
-  language: 'zh',
-  characters: 24,
-}
+// cloned profile), which the shared requirement set already carries, so the quote path and
+// this port check the same requirement. A configuration without the async mode refuses an
+// asynchronous script step instead of returning an accepted request it could never complete.
+//
+// The port only knows the requests it issued itself. Anything else is reported as `unknown`
+// instead of being answered with a placeholder voice.
 
 export function createMockSpeechPort(
   config: ProviderConfig,
@@ -156,11 +141,9 @@ export function createMockSpeechPort(
       await script.wait()
       const observedAt = observedAtOf()
       const voiceKind = voiceKindOf(input.voiceRef)
-      const requirements: CapabilityRequirement[] = [
-        ...deriveSpeechRequirements(input),
-        { operation: 'synthesize', voiceKind },
-      ]
-      const check = checkAllCapabilities(config.capabilities, requirements)
+      // deriveSpeechRequirements already derives voiceKind from the voice reference, so the
+      // port and the quote path check exactly the same requirement set.
+      const check = checkAllCapabilities(config.capabilities, deriveSpeechRequirements(input))
       if (!check.ok) return speechSynthesizeResultSchema.parse(refused(check.error, input.requestKey, observedAt))
 
       const step = script.next('synthesize')
@@ -249,7 +232,20 @@ export function createMockSpeechPort(
       const step = script.next('query')
       switch (step.outcome) {
         case 'completed': {
-          const recalled = issued.get(input.requestKey) ?? placeholderVoice
+          const recalled = issued.get(input.requestKey)
+          if (!recalled) {
+            // Reporting a placeholder voice here would claim a confirmation that never
+            // happened, so an unknown request is reported as unconfirmable instead.
+            return speechQueryResultSchema.parse(
+              unknownResult(
+                'query-unavailable',
+                'The mock port has no record of this request; the original result cannot be confirmed',
+                input.requestKey,
+                observedAt,
+                input.requestId,
+              ),
+            )
+          }
           return speechQueryResultSchema.parse(
             completed({
               requestKey: input.requestKey,
@@ -307,7 +303,20 @@ export function createMockSpeechPort(
         case 'canceled':
           return speechCancelResultSchema.parse(canceled(input.requestKey, observedAt, input.requestId))
         case 'completed': {
-          const recalled = issued.get(input.requestKey) ?? placeholderVoice
+          const recalled = issued.get(input.requestKey)
+          if (!recalled) {
+            // The cancellation cannot be confirmed for a request this port never issued, and
+            // the original request may still be running, so it stays unknown.
+            return speechCancelResultSchema.parse(
+              unknownResult(
+                'query-unavailable',
+                'The mock port has no record of this request; the cancellation cannot be confirmed',
+                input.requestKey,
+                observedAt,
+                input.requestId,
+              ),
+            )
+          }
           return speechCancelResultSchema.parse(
             completed({
               requestKey: input.requestKey,
