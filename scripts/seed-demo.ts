@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { hashPassword } from 'better-auth/crypto'
-import { eq } from 'drizzle-orm'
 import { createDatabase } from '../server/database/index.js'
 import { account, creditAccounts, providerConfigs, providerDefaults, user } from '../server/database/schema.js'
 import { providerConfigFixtures, providerDefaultFixtures } from '../shared/contracts/provider/fixtures.js'
@@ -21,11 +20,13 @@ else {
         ['Demo Creator B', 'creator-b@example.test', 'creator'],
         ['Demo Administrator', 'admin@example.test', 'admin'],
       ] as const) {
-        const newId = randomUUID()
-        await tx.insert(user).values({ id: newId, name, email, role, emailVerified: true }).onConflictDoNothing({ target: user.email })
-        const row = await tx.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
-        const ownerId = row[0]!.id
-        await tx.insert(account).values({ id: randomUUID(), accountId: ownerId, providerId: 'credential', userId: ownerId, password: passwordHash }).onConflictDoNothing({ target: [account.providerId, account.accountId] })
+        const inserted = await tx.insert(user).values({ id: randomUUID(), name, email, role, emailVerified: true })
+          .onConflictDoNothing({ target: user.email }).returning({ id: user.id })
+        // An existing email may belong to a real account. Never attach a demo
+        // password or create demo wallets for a user the seed did not create.
+        if (!inserted[0]) continue
+        const ownerId = inserted[0].id
+        await tx.insert(account).values({ id: randomUUID(), accountId: ownerId, providerId: 'credential', userId: ownerId, password: passwordHash })
         for (const currency of ['creation', 'voice'] as const) {
           await tx.insert(creditAccounts).values({ ownerId, currency }).onConflictDoNothing({ target: [creditAccounts.ownerId, creditAccounts.currency] })
         }
@@ -50,7 +51,7 @@ else {
         await tx.insert(providerDefaults).values({ kind: entry.kind, providerConfigId: entry.providerConfigId, version: entry.version }).onConflictDoNothing({ target: providerDefaults.kind })
       }
     })
-    console.info('Demo users, empty credit accounts and mock Provider fixtures are ready. Existing credentials, balances and defaults were not changed.')
+    console.info('Demo seed completed. Existing email accounts, credentials, balances and defaults were not changed.')
   }
   catch {
     console.error('Demo seed failed. Apply migrations first; credentials are omitted.')

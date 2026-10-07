@@ -51,6 +51,15 @@ else {
       await expectSqlState(client, '23503', taskSql, [randomUUID(), ownerA, conversationId, otherToolCallId, quoteId, 'lyrics.generate', 'pending', 'mock', '{}', '{}', '{}'])
       const taskId = randomUUID()
       await client.query(taskSql, [taskId, ownerA, conversationId, toolCallId, quoteId, 'lyrics.generate', 'pending', 'mock', '{}', '{}', '{}'])
+      const otherConversationId = randomUUID()
+      const otherOwnerToolCallId = randomUUID()
+      const otherQuoteId = randomUUID()
+      const otherTaskId = randomUUID()
+      await client.query('INSERT INTO conversations (id, owner_id, title) VALUES ($1, $2, $3)', [otherConversationId, ownerB, 'Other user'])
+      await client.query('INSERT INTO tool_calls (id, owner_id, conversation_id, tool_name, input_snapshot, input_hash, status) VALUES ($1, $2, $3, $4, $5, $6, $7)', [otherOwnerToolCallId, ownerB, otherConversationId, 'lyrics.generate', '{}', 'other-owner-hash', 'proposed'])
+      await client.query('INSERT INTO quotes (id, owner_id, tool_call_id, input_hash, input_snapshot, provider_snapshot, capability_snapshot, price_version, currency, amount, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now() + interval \'1 hour\')', [otherQuoteId, ownerB, otherOwnerToolCallId, 'other-owner-hash', '{}', '{}', '{}', 1, 'creation', 1])
+      await client.query(taskSql, [otherTaskId, ownerB, otherConversationId, otherOwnerToolCallId, otherQuoteId, 'lyrics.generate', 'pending', 'mock', '{}', '{}', '{}'])
+      await expectSqlState(client, '23503', 'UPDATE generation_tasks SET retry_of_task_id = $1 WHERE id = $2', [otherTaskId, taskId])
       await expectSqlState(client, '23514', 'INSERT INTO assets (owner_id, task_id, kind, title, source_mode, status) VALUES ($1, $2, $3, $4, $5, $6)', [ownerA, taskId, 'lyrics', 'Missing slot', 'mock', 'ready'])
       const assetId = randomUUID()
       await client.query('INSERT INTO assets (id, owner_id, kind, title, source_mode, status) VALUES ($1, $2, $3, $4, $5, $6)', [assetId, ownerA, 'lyrics', 'Test asset', 'manual', 'ready'])
@@ -67,6 +76,11 @@ else {
       await expectSqlState(client, '23503', 'INSERT INTO credit_entries (owner_id, account_id, kind, available_delta, held_delta, operation_key) VALUES ($1, $2, $3, $4, $5, $6)', [ownerB, wallet.rows[0]!.id, 'adjustment', 0, 0, `wrong-owner-${entryId}`])
       await client.query('INSERT INTO credit_entries (id, owner_id, account_id, kind, available_delta, held_delta, operation_key) VALUES ($1, $2, $3, $4, $5, $6, $7)', [entryId, ownerA, wallet.rows[0]!.id, 'adjustment', 0, 0, `test-${entryId}`])
       await expectSqlState(client, 'P0001', 'UPDATE credit_entries SET reason = $1 WHERE id = $2', ['mutated', entryId])
+      await expectSqlState(client, 'P0001', 'TRUNCATE credit_entries', [])
+      const auditId = randomUUID()
+      await client.query('INSERT INTO audit_logs (id, actor_id, action, target_type, target_id, change_summary, request_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [auditId, ownerA, 'test', 'user', ownerA, '{}', randomUUID()])
+      await expectSqlState(client, 'P0001', 'UPDATE audit_logs SET reason = $1 WHERE id = $2', ['mutated', auditId])
+      await expectSqlState(client, 'P0001', 'TRUNCATE audit_logs', [])
       await client.query('ROLLBACK')
     }
     catch (error) {
@@ -76,7 +90,7 @@ else {
     finally {
       client.release()
     }
-    console.info('PostgreSQL migrations, Better Auth sign-up, ownership, task linkage, asset slots, Provider matching, nonnegative balance, uniqueness and append-only checks passed.')
+    console.info('PostgreSQL migrations, Better Auth sign-up, ownership, retry linkage, asset slots, Provider matching, nonnegative balance, uniqueness and append-only checks passed.')
   }
   catch {
     console.error('Database check failed. Check TEST_DATABASE_URL and PostgreSQL availability; credentials are omitted.')
@@ -88,6 +102,7 @@ else {
   }
 }
 
+/** Assert a constraint failure without aborting the surrounding rollback-only test transaction. */
 async function expectSqlState(client: import('pg').PoolClient, expected: string, statement: string, values: unknown[]) {
   await client.query('SAVEPOINT expected_failure')
   try {
