@@ -2,7 +2,7 @@
 
 MuseFlow 是《软件工程课程设计》课题十二「AI音乐创作SaaS平台系统」的协作仓库。项目围绕对话式音乐创作、个性化推荐、生成物管理和用户双积分计费展开。
 
-**需求和设计基线已具备，可以开始按 Issue 协作开发。** MF-04 提供根目录 Nuxt 4、公共契约和服务端数据库连接骨架；`prototype` 保留 MF-02 独立静态交互原型。业务认证、生成、计费及业务表尚未实现。
+**需求和设计基线已具备，可以开始按 Issue 协作开发。** MF-04 提供根目录 Nuxt 4、公共契约和服务端数据库连接骨架；MF-05 提供基础业务表、迁移和演示种子；`prototype` 保留 MF-02 独立静态交互原型。业务认证、生成和计费服务尚未实现。
 
 ## 评审页面原型
 
@@ -70,6 +70,8 @@ pnpm start
 
 `test` 覆盖单元、SDK 兼容性与 Nuxt 组件，`test:integration` 使用 Nuxt Test Utils 验证真实 SSR/API（无需数据库或浏览器）。`test:db` 必须另行配置：在根目录 `.env` 中填写指向隔离测试数据库的 `TEST_DATABASE_URL`，再运行 `pnpm test:db`。缺少配置或连接失败均返回非零退出码，不静默跳过。构建和常规测试不需要真实 Provider 凭据。
 
+MF-05 已提供 Drizzle schema、首个 SQL 迁移和可重复执行的演示种子。新库与升级运行 `pnpm db:migrate`；迁移、演示账号和数据库验收步骤见[数据库基线与迁移](docs/DATABASE.md)。
+
 首批无前置依赖的任务是 [MF-01 技术选择与公共约定](https://github.com/A-Words/museflow/issues/1)、[MF-02 页面原型](https://github.com/A-Words/museflow/issues/2)、[MF-03 Provider 契约与样例](https://github.com/A-Words/museflow/issues/3)，认领前查看对应 Issue 是否已有负责人。MF-01 完成后，由 MF-04 统一建立应用骨架、锁定依赖并补齐启动说明。具体供应商、成员材料和交付日期可随后补充。
 
 ## 文档状态
@@ -79,7 +81,7 @@ pnpm start
 - 推进方式：按功能阶段推进，当前不固定交付日期；P0 先完成核心流程，P1 补齐翻唱和声音克隆。课题外扩展不作为完成条件。
 - 协作方式：三名成员在 GitHub Issues 自行认领，每项一名主责、至少一名其他成员评审；不按成员长期固定前端、后端或 Agent 岗位。本地文档保留任务索引和范围，负责人、进度及验收证据在 Issue 中维护。
 - 已建立应用骨架：Nuxt 页面与 Nitro API 同源，根目录采用 Nuxt 标准结构，暂不设独立 Worker 或共享包；耗时任务执行留待后续 Issue。
-- AI SDK 原生 UI 消息流、Vue 客户端及 Zod 的 Mock 兼容性已验证，首轮不引入 LangGraph；Better Auth + Drizzle 已验证实例构造，PostgreSQL 已验证连接。注册登录、迁移、真实 Provider 和业务事务仍由后续 Issue 实现与验收。双积分含义及供应商配置按[技术选型与待定项](docs/ARCHITECTURE.md#技术选型与待定项)处理。
+- AI SDK 原生 UI 消息流、Vue 客户端及 Zod 的 Mock 兼容性已验证，首轮不引入 LangGraph；Better Auth + Drizzle 已验证实例构造，MF-05 已在隔离 PostgreSQL 17 中验证基础迁移和约束。注册登录、真实 Provider 和业务事务仍由后续 Issue 实现与验收。双积分含义及供应商配置按[技术选型与待定项](docs/ARCHITECTURE.md#技术选型与待定项)处理。
 - 独立静态原型与 Nuxt 骨架分别运行，未将原型当作生产页面迁移。
 - 运行时校验使用 Zod；测试入口采用 Vitest + Nuxt Test Utils，不建立 Playwright 浏览器自动化，关键浏览器流程手动验收。
 - 文件存储已确认开发期私有本地目录、部署期私有对象存储，通过统一 Storage Adapter 访问；具体对象存储服务在部署时选择，尚未实现。

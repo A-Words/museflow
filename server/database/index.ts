@@ -1,6 +1,8 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
+import * as schema from './schema.js'
 
+/** Open the shared PostgreSQL pool and typed Drizzle client for server-side code. */
 export function createDatabase(connectionString: string) {
   const pool = new pg.Pool({ connectionString, max: 5, connectionTimeoutMillis: 5000 })
   // pg removes failed idle clients before emitting this event. A later query
@@ -8,6 +10,6 @@ export function createDatabase(connectionString: string) {
   pool.on('error', () => {
     console.error('Database idle connection lost. The pool will reconnect on the next query; no query was retried.')
   })
-  const db = drizzle(pool)
+  const db = drizzle(pool, { schema })
   return { db, pool, close: () => pool.end() }
 }
