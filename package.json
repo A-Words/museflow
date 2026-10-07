@@ -16,7 +16,10 @@
     "lint": "nuxt prepare && eslint .",
     "test": "nuxt prepare && vitest run --config vitest.config.ts && vitest run --config vitest.nuxt.config.ts",
     "test:integration": "nuxt prepare && vitest run --config vitest.integration.config.ts",
-    "test:db": "tsx --env-file-if-exists=.env scripts/check-database.ts"
+    "test:db": "tsx --env-file-if-exists=.env scripts/check-database.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env scripts/seed-demo.ts"
   },
   "devDependencies": {
     "@nuxt/test-utils": "4.3.2",
